@@ -77,6 +77,13 @@ impl ApiUser {
 
         Ok(Self::from(api_user))
     }
+
+    pub fn has_access(&self, role: ApiUserRole, access: ApiUserAccess) -> bool {
+        if self.role.has_access(role) && self.access.has_access(access) {
+            return true;
+        }
+        false
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]

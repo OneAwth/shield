@@ -31,7 +31,7 @@ pub fn is_current_realm_admin(user: &JwtUser, realm_id: &str) -> bool {
 }
 
 pub async fn has_access_to_api_cred(api_user: &ApiUser, role: ApiUserRole, access: ApiUserAccess) -> bool {
-    if api_user.role != role {
+    if !api_user.role.has_access(role) {
         return false;
     }
 

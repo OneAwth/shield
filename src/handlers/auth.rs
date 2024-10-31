@@ -46,6 +46,83 @@ pub struct LoginResponse {
     refresh_token: Option<String>,
 }
 
+pub async fn admin_login(
+    user: ApiUser,
+    Extension(state): Extension<Arc<AppState>>,
+    Extension(session_info): Extension<Arc<SessionInfo>>,
+    Path((realm_id, client_id)): Path<(Uuid, Uuid)>,
+    Json(payload): Json<Credentials>,
+) -> Result<Json<LoginResponse>, Error> {
+    debug!("🚀 Admin login request received! {:#?}", session_info);
+    if !user.has_access(ApiUserRole::ClientAdmin, ApiUserAccess::Admin) {
+        debug!("No allowed access");
+        return Err(Error::Authenticate(AuthenticateError::ActionForbidden));
+    }
+
+    let user_with_resource_groups = user::Entity::find()
+        .filter(user::Column::Email.eq(payload.email))
+        .find_also_related(resource_group::Entity)
+        .filter(resource_group::Column::RealmId.eq(realm_id))
+        .filter(resource_group::Column::ClientId.eq(client_id))
+        .one(&state.db)
+        .await?;
+
+    if user_with_resource_groups.is_none() {
+        debug!("No matching data found");
+        return Err(Error::not_found());
+    }
+
+    let (user, resource_groups) = user_with_resource_groups.unwrap();
+
+    if user.locked_at.is_some() {
+        debug!("User is locked");
+        return Err(Error::Authenticate(AuthenticateError::Locked));
+    }
+
+    if resource_groups.is_none() {
+        debug!("No matching resource group found");
+        return Err(Error::not_found());
+    }
+
+    let resource_groups = resource_groups.unwrap();
+    if resource_groups.locked_at.is_some() {
+        debug!("Resource group is locked");
+        return Err(Error::Authenticate(AuthenticateError::Locked));
+    }
+
+    if !user.verify_password(&payload.password) {
+        debug!("Wrong password");
+        return Err(Error::Authenticate(AuthenticateError::WrongCredentials));
+    }
+
+    let client = client::Entity::find_by_id(client_id).one(&state.db).await?;
+    if client.is_none() {
+        debug!("No client found");
+        return Err(Error::not_found());
+    }
+
+    let client = client.unwrap();
+    if client.locked_at.is_some() {
+        debug!("Client is locked");
+        return Err(Error::Authenticate(AuthenticateError::Locked));
+    }
+
+    let sessions = session::Entity::find()
+        .filter(session::Column::UserId.eq(user.id))
+        .filter(session::Column::ClientId.eq(client.id))
+        .filter(session::Column::Expires.gt(chrono::Local::now().timestamp()))
+        .all(&state.db)
+        .await?;
+
+    if sessions.len() >= client.max_concurrent_sessions as usize {
+        debug!("Client has reached max concurrent sessions");
+        return Err(Error::Authenticate(AuthenticateError::MaxConcurrentSessions));
+    }
+
+    let login_response = create_session_and_refresh_token(state, user, client, resource_groups, session_info).await?;
+    Ok(Json(login_response))
+}
+
 pub async fn login(
     Extension(state): Extension<Arc<AppState>>,
     Extension(session_info): Extension<Arc<SessionInfo>>,
@@ -99,7 +176,18 @@ pub async fn login(
         return Err(Error::Authenticate(AuthenticateError::Locked));
     }
 
-    let login_response = state
+    let login_response = create_session_and_refresh_token(state, user, client, resource_groups, session_info).await?;
+    Ok(Json(login_response))
+}
+
+async fn create_session_and_refresh_token(
+    state: Arc<AppState>,
+    user: user::Model,
+    client: client::Model,
+    resource_groups: resource_group::Model,
+    session_info: Arc<SessionInfo>,
+) -> Result<LoginResponse, Error> {
+    Ok(state
         .db
         .transaction(|txn| {
             Box::pin(async move {
@@ -108,8 +196,8 @@ pub async fn login(
                         let model = refresh_token::ActiveModel {
                             id: Set(Uuid::now_v7()),
                             user_id: Set(user.id),
-                            client_id: Set(Some(client_id)),
-                            realm_id: Set(realm_id),
+                            client_id: Set(Some(client.id)),
+                            realm_id: Set(client.realm_id),
                             re_used_count: Set(0),
                             locked_at: Set(None),
                             ..Default::default()
@@ -150,9 +238,7 @@ pub async fn login(
                 result.map_err(|e| DbErr::Custom(e.to_string()))
             })
         })
-        .await?;
-
-    Ok(Json(login_response))
+        .await?)
 }
 
 async fn create_session(

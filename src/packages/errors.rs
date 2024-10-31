@@ -109,8 +109,8 @@ impl AuthenticateError {
             AuthenticateError::Locked => (StatusCode::LOCKED, 40006),
             AuthenticateError::NoResource => (StatusCode::FORBIDDEN, 40008),
             AuthenticateError::ActionForbidden => (StatusCode::FORBIDDEN, 40009),
-            AuthenticateError::MaxConcurrentSessions => (StatusCode::LOCKED, 40010),
-            AuthenticateError::InvalidApiCredentials => (StatusCode::FORBIDDEN, 40011),
+            AuthenticateError::MaxConcurrentSessions => (StatusCode::FORBIDDEN, 40010),
+            AuthenticateError::InvalidApiCredentials => (StatusCode::UNAUTHORIZED, 40011),
         }
     }
 }
