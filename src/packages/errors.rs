@@ -2,6 +2,7 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
 use bcrypt::BcryptError;
+use jsonwebtoken;
 use sea_orm::{DbErr, TransactionError};
 use serde_json::json;
 use std::io;
@@ -24,7 +25,7 @@ pub enum Error {
     DbTransaction(Box<dyn std::error::Error + Send + Sync>, StatusCode),
 
     #[error("{0}")]
-    NotFound(#[from] NotFound),
+    NotFound(#[from] NotFoundError),
 
     #[error("{0}")]
     RunSyncTask(#[from] JoinError),
@@ -37,6 +38,9 @@ pub enum Error {
 
     #[error("{0}")]
     SerdeJson(#[from] serde_json::Error),
+
+    #[error("JWT error: {0}")]
+    Jwt(#[from] jsonwebtoken::errors::Error),
 }
 
 impl Error {
@@ -46,6 +50,7 @@ impl Error {
             Error::BadRequest(err) => err.get_codes(),
             Error::NotFound(_) => (StatusCode::NOT_FOUND, 40003),
             Error::Authenticate(err) => err.get_codes(),
+            Error::Jwt(_) => (StatusCode::UNAUTHORIZED, 40012), // New JWT error code
 
             // 5XX Errors
             Error::RunSyncTask(_) => (StatusCode::INTERNAL_SERVER_ERROR, 5005),
@@ -58,7 +63,7 @@ impl Error {
     }
 
     pub fn not_found() -> Self {
-        Error::NotFound(NotFound::Generic)
+        Error::NotFound(NotFoundError::Generic)
     }
 
     pub fn cannot_perform_operation(message: &str) -> Self {
@@ -120,11 +125,9 @@ impl From<TransactionError<DbErr>> for Error {
         match err {
             TransactionError::Connection(db_err) => Error::DbTransaction(Box::new(db_err), StatusCode::INTERNAL_SERVER_ERROR),
             TransactionError::Transaction(db_err) => {
-                // Here we can check if db_err has a specific status code
                 let status_code = match db_err {
                     DbErr::RecordNotFound(_) => StatusCode::NOT_FOUND,
                     DbErr::Custom(ref e) if e.contains("duplicate key value") => StatusCode::CONFLICT,
-                    // Add more specific cases as needed
                     _ => StatusCode::INTERNAL_SERVER_ERROR,
                 };
                 Error::DbTransaction(Box::new(db_err), status_code)
@@ -146,9 +149,19 @@ impl BadRequestError {
 }
 
 #[derive(thiserror::Error, Debug)]
-pub enum NotFound {
+pub enum NotFoundError {
     #[error("Not found")]
     Generic,
+    #[error("Session not found")]
+    SessionNotFound,
+    #[error("User not found")]
+    UserNotFound,
+    #[error("Client not found")]
+    ClientNotFound,
+    #[error("Resource Group not found")]
+    ResourceGroupNotFound,
+    #[error("Resource not found")]
+    ResourceNotFound,
 }
 
 #[derive(thiserror::Error, Debug)]

@@ -8,6 +8,7 @@ database:
   name: shield
 secrets:
   signing_key: 87cc20e216861442af1bc993ad6f274b61bb65b956444da50f446b2046c0d260
+  api_key_signing_secret: 87cc20e216861442af1bc993ad6f274b61bb65b956444da50f446b2046c0d260
 logger:
   level: debug
 admin:

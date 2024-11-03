@@ -2,7 +2,10 @@ use std::sync::Arc;
 
 use axum::{extract::Path, Extension, Json};
 use chrono::Utc;
-use entity::api_user;
+use entity::{
+    api_user,
+    sea_orm_active_enums::{ApiUserAccess, ApiUserRole},
+};
 use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
 use uuid::Uuid;
 
@@ -12,14 +15,12 @@ use crate::{
         DeleteResponse,
     },
     packages::{
+        api_token::ApiUser,
         db::AppState,
         errors::{AuthenticateError, Error},
         jwt_token::JwtUser,
     },
-    utils::{
-        helpers::generate_random_string::{generate_random_string, Length},
-        role_checker::{is_current_realm_admin, is_master_realm_admin},
-    },
+    utils::role_checker::{is_current_realm_admin, is_master_realm_admin},
 };
 
 pub async fn get_api_users(
@@ -40,20 +41,17 @@ pub async fn get_api_users(
 }
 
 pub async fn create_api_user(
-    user: JwtUser,
+    user: ApiUser,
     Extension(state): Extension<Arc<AppState>>,
     Path((realm_id, client_id)): Path<(Uuid, Uuid)>,
     Json(payload): Json<CreateApiUserRequest>,
 ) -> Result<Json<CreateApiUserResponse>, Error> {
-    if !is_master_realm_admin(&user) && !is_current_realm_admin(&user, &realm_id.to_string()) {
+    if !user.has_access(ApiUserRole::ClientAdmin, ApiUserAccess::Admin) {
         return Err(Error::Authenticate(AuthenticateError::NoResource));
     }
 
-    let api_secret = generate_random_string(Length::U64);
-
     let api_user_model = api_user::ActiveModel {
         id: Set(Uuid::now_v7()),
-        secret: Set(api_secret),
         name: Set(payload.name),
         description: Set(payload.description),
         realm_id: Set(realm_id),
@@ -61,8 +59,6 @@ pub async fn create_api_user(
         role: Set(payload.role),
         access: Set(payload.access),
         expires: Set(payload.expires.unwrap().to_datetime()),
-        created_by: Set(user.sub),
-        updated_by: Set(user.sub),
         ..Default::default()
     };
 

@@ -1,5 +1,4 @@
 use super::m20220101_000002_create_client_table::Client;
-use super::m20220101_000003_create_user_table::User;
 use crate::m20220101_000001_create_realm_table::Realm;
 use sea_orm::sqlx::types::chrono;
 use sea_orm::{ActiveEnum, DbBackend, DeriveActiveEnum, EnumIter, Schema};
@@ -20,7 +19,6 @@ impl MigrationTrait for Migration {
                     .table(ApiUser::Table)
                     .if_not_exists()
                     .col(ColumnDef::new(ApiUser::Id).uuid().not_null().primary_key())
-                    .col(ColumnDef::new(ApiUser::Secret).string().not_null())
                     .col(ColumnDef::new(ApiUser::Name).string().not_null())
                     .col(ColumnDef::new(ApiUser::Description).string())
                     .col(ColumnDef::new(ApiUser::RealmId).uuid().not_null())
@@ -41,22 +39,6 @@ impl MigrationTrait for Migration {
                     )
                     .col(ColumnDef::new(ApiUser::Role).custom(ApiUserRole::name()).not_null())
                     .col(ColumnDef::new(ApiUser::Access).custom(ApiUserAccess::name()).not_null())
-                    .col(ColumnDef::new(ApiUser::CreatedBy).uuid().not_null())
-                    .foreign_key(
-                        ForeignKey::create()
-                            .name("fk_api_user_created_by")
-                            .from(ApiUser::Table, ApiUser::CreatedBy)
-                            .to(User::Table, User::Id)
-                            .on_delete(ForeignKeyAction::Cascade),
-                    )
-                    .col(ColumnDef::new(ApiUser::UpdatedBy).uuid().not_null())
-                    .foreign_key(
-                        ForeignKey::create()
-                            .name("fk_api_user_updated_by")
-                            .from(ApiUser::Table, ApiUser::UpdatedBy)
-                            .to(User::Table, User::Id)
-                            .on_delete(ForeignKeyAction::Cascade),
-                    )
                     .col(ColumnDef::new(ApiUser::Expires).timestamp_with_time_zone().not_null())
                     .col(ColumnDef::new(ApiUser::LockedAt).timestamp_with_time_zone())
                     .col(
@@ -115,7 +97,6 @@ pub enum ApiUserAccess {
 pub enum ApiUser {
     Table,
     Id,
-    Secret,
     Name,
     Description,
     RealmId,
@@ -124,8 +105,6 @@ pub enum ApiUser {
     Access,
     Expires,
     LockedAt,
-    CreatedBy,
-    UpdatedBy,
     CreatedAt,
     UpdatedAt,
 }

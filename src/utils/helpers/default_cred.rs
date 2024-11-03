@@ -11,6 +11,7 @@ pub struct DefaultCred {
     pub realm_id: Uuid,
     pub client_id: Uuid,
     pub master_admin_user_id: Uuid,
+    pub master_api_key: String,
     pub resource_group_id: Uuid,
     pub resource_ids: Vec<Uuid>,
 }

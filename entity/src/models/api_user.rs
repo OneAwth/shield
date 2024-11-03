@@ -10,15 +10,12 @@ use serde::{Deserialize, Serialize};
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: Uuid,
-    pub secret: String,
     pub name: String,
     pub description: Option<String>,
     pub realm_id: Uuid,
     pub client_id: Uuid,
     pub role: ApiUserRole,
     pub access: ApiUserAccess,
-    pub created_by: Uuid,
-    pub updated_by: Uuid,
     pub expires: DateTimeWithTimeZone,
     pub locked_at: Option<DateTimeWithTimeZone>,
     pub created_at: DateTimeWithTimeZone,
@@ -43,22 +40,6 @@ pub enum Relation {
         on_delete = "Cascade"
     )]
     Realm,
-    #[sea_orm(
-        belongs_to = "super::user::Entity",
-        from = "Column::CreatedBy",
-        to = "super::user::Column::Id",
-        on_update = "NoAction",
-        on_delete = "Cascade"
-    )]
-    User2,
-    #[sea_orm(
-        belongs_to = "super::user::Entity",
-        from = "Column::UpdatedBy",
-        to = "super::user::Column::Id",
-        on_update = "NoAction",
-        on_delete = "Cascade"
-    )]
-    User1,
 }
 
 impl Related<super::client::Entity> for Entity {

@@ -3,8 +3,14 @@ use entity::{
     api_user,
     sea_orm_active_enums::{ApiUserAccess, ApiUserRole},
 };
+use jsonwebtoken::{EncodingKey, Header};
+use once_cell::sync::Lazy;
 use sea_orm::prelude::DateTimeWithTimeZone;
 use serde::{Deserialize, Serialize};
+
+use crate::packages::{api_token::ApiTokenClaims, settings::SETTINGS};
+
+static HEADER: Lazy<Header> = Lazy::new(Header::default);
 
 #[derive(Deserialize)]
 pub enum TokenExpires {
@@ -67,10 +73,10 @@ pub struct CreateApiUserResponse {
 impl From<api_user::Model> for CreateApiUserResponse {
     fn from(api_user: api_user::Model) -> Self {
         Self {
+            api_key: Self::create_token(api_user.clone(), &SETTINGS.read().secrets.signing_key).unwrap(),
             id: api_user.id.to_string(),
             name: api_user.name,
             description: api_user.description,
-            api_key: format!("{}.{}", api_user.id, api_user.secret),
             realm_id: api_user.realm_id.to_string(),
             client_id: api_user.client_id.to_string(),
             role: api_user.role,
@@ -79,6 +85,18 @@ impl From<api_user::Model> for CreateApiUserResponse {
             expires_at: api_user.expires,
         }
     }
+}
+
+impl CreateApiUserResponse {
+    pub fn create_token(api_user: api_user::Model, secret: &str) -> Result<String, jsonwebtoken::errors::Error> {
+        create_api_key(api_user, secret)
+    }
+}
+
+pub fn create_api_key(api_user: api_user::Model, secret: &str) -> Result<String, jsonwebtoken::errors::Error> {
+    let encoding_key = EncodingKey::from_secret(secret.as_ref());
+    let claims = ApiTokenClaims::new(api_user);
+    jsonwebtoken::encode(&HEADER, &claims, &encoding_key)
 }
 
 #[derive(Deserialize)]
@@ -111,10 +129,10 @@ pub struct UpdateApiUserResponse {
 impl From<api_user::Model> for UpdateApiUserResponse {
     fn from(api_user: api_user::Model) -> Self {
         Self {
+            api_key: create_api_key(api_user.clone(), &SETTINGS.read().secrets.api_key_signing_secret).unwrap(),
             id: api_user.id.to_string(),
             name: api_user.name,
             description: api_user.description,
-            api_key: format!("{}.{}", api_user.id, api_user.secret),
             realm_id: api_user.realm_id.to_string(),
             client_id: api_user.client_id.to_string(),
             role: api_user.role,

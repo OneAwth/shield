@@ -1,9 +1,10 @@
 use chrono::Utc;
 use sea_orm::{prelude::Uuid, ActiveModelTrait, ColumnTrait, DatabaseConnection, DeleteResult, EntityTrait, QueryFilter, Set};
+use tracing::debug;
 
 use crate::{
     mappers::client::{CreateClientRequest, UpdateClientRequest},
-    packages::errors::{AuthenticateError, Error},
+    packages::errors::{AuthenticateError, Error, NotFoundError},
     utils::default_resource_checker::is_default_client,
 };
 use entity::client;
@@ -75,4 +76,19 @@ pub async fn update_client_by_id(db: &DatabaseConnection, client_id: Uuid, paylo
 
 pub async fn delete_client_by_id(db: &DatabaseConnection, id: Uuid) -> Result<DeleteResult, Error> {
     Ok(client::Entity::delete_by_id(id).exec(db).await?)
+}
+
+pub async fn get_active_client_by_id(db: &DatabaseConnection, client_id: Uuid) -> Result<client::Model, Error> {
+    let client = client::Entity::find_by_id(client_id).one(db).await?;
+    if client.is_none() {
+        debug!("No client found");
+        return Err(Error::NotFound(NotFoundError::ClientNotFound));
+    }
+
+    let client = client.unwrap();
+    if client.locked_at.is_some() {
+        debug!("Client is locked");
+        return Err(Error::Authenticate(AuthenticateError::Locked));
+    }
+    Ok(client)
 }

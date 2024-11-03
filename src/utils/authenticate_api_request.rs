@@ -18,7 +18,6 @@ where
         let state = parts.extensions.get::<Arc<AppState>>().expect("AppState not found");
 
         if let Some(api_key) = parts.headers.get("Api-Key").and_then(|v| v.to_str().ok()) {
-            println!("API_KEY::: {:?}", &api_key);
             return ApiUser::validate_cred(&state.db, api_key).await;
         }
         Err(Error::Authenticate(AuthenticateError::InvalidApiCredentials))
