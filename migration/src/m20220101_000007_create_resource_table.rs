@@ -1,6 +1,7 @@
-use super::m20220101_000004_create_resource_group_table::ResourceGroup;
 use sea_orm::sqlx::types::chrono;
 use sea_orm_migration::prelude::*;
+
+use crate::{m20220101_000002_create_client_table::Client, m20220101_000005_create_user_table::User};
 
 #[derive(DeriveMigrationName)]
 pub struct Migration;
@@ -14,12 +15,20 @@ impl MigrationTrait for Migration {
                     .table(Resource::Table)
                     .if_not_exists()
                     .col(ColumnDef::new(Resource::Id).uuid().not_null().primary_key())
-                    .col(ColumnDef::new(Resource::GroupId).uuid().not_null())
+                    .col(ColumnDef::new(Resource::UserId).uuid().not_null())
                     .foreign_key(
                         ForeignKey::create()
-                            .name("fk_resource_group_id")
-                            .from(Resource::Table, Resource::GroupId)
-                            .to(ResourceGroup::Table, ResourceGroup::Id)
+                            .name("fk_resource_user_id")
+                            .from(Resource::Table, Resource::UserId)
+                            .to(User::Table, User::Id)
+                            .on_delete(ForeignKeyAction::Cascade),
+                    )
+                    .col(ColumnDef::new(Resource::ClientId).uuid().not_null())
+                    .foreign_key(
+                        ForeignKey::create()
+                            .name("fk_resource_client_id")
+                            .from(Resource::Table, Resource::ClientId)
+                            .to(Client::Table, Client::Id)
                             .on_delete(ForeignKeyAction::Cascade),
                     )
                     .col(ColumnDef::new(Resource::Name).string().not_null())
@@ -43,7 +52,8 @@ impl MigrationTrait for Migration {
                             .unique()
                             .name("resource_group_id_and_resource_name_idx")
                             .col(Resource::Name)
-                            .col(Resource::GroupId),
+                            .col(Resource::UserId)
+                            .col(Resource::ClientId),
                     )
                     .to_owned(),
             )
@@ -59,7 +69,8 @@ impl MigrationTrait for Migration {
 pub enum Resource {
     Table,
     Id,
-    GroupId,
+    UserId,
+    ClientId,
     Name,
     Value,
     Description,

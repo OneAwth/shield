@@ -1,7 +1,7 @@
-use crate::m20220101_000006_create_refresh_token_table::RefreshToken;
+use crate::m20220101_000008_create_refresh_token_table::RefreshToken;
 
 use super::m20220101_000002_create_client_table::Client;
-use super::m20220101_000003_create_user_table::User;
+use super::m20220101_000005_create_user_table::User;
 use sea_orm::sqlx::types::chrono;
 use sea_orm_migration::prelude::*;
 

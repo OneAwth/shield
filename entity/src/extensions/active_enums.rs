@@ -9,7 +9,8 @@ pub mod role_level {
 pub mod access_level {
     pub const READ: u32 = 10;
     pub const WRITE: u32 = 20;
-    pub const DELETE: u32 = 30;
+    pub const UPDATE: u32 = 30;
+    pub const DELETE: u32 = 40;
     pub const ADMIN: u32 = 100;
 }
 
@@ -18,6 +19,7 @@ impl ApiUserAccess {
         match self {
             ApiUserAccess::Read => access_level::READ,
             ApiUserAccess::Write => access_level::WRITE,
+            ApiUserAccess::Update => access_level::UPDATE,
             ApiUserAccess::Delete => access_level::DELETE,
             ApiUserAccess::Admin => access_level::ADMIN,
         }
