@@ -99,7 +99,8 @@ impl Settings {
             builder = builder.set_override("default_cred.client_id", default_cred.client_id.to_string())?;
             builder = builder.set_override("default_cred.master_admin_user_id", default_cred.master_admin_user_id.to_string())?;
             builder = builder.set_override("default_cred.master_api_key", default_cred.master_api_key.to_string())?;
-            builder = builder.set_override("default_cred.resource_group_id", default_cred.resource_group_id.to_string())?;
+            builder = builder.set_override("default_cred.resource_group_key", default_cred.resource_group_key.to_string())?;
+            builder = builder.set_override("default_cred.group_id", default_cred.group_id.to_string())?;
 
             let resource_ids_value: Vec<Value> = default_cred.resource_ids.iter().map(|uuid| Value::new(None, uuid.to_string())).collect();
             builder = builder.set_override("default_cred.resource_ids", resource_ids_value)?;
@@ -107,7 +108,8 @@ impl Settings {
             builder = builder.set_override("default_cred.realm_id", "00000000-0000-0000-0000-000000000000")?;
             builder = builder.set_override("default_cred.client_id", "00000000-0000-0000-0000-000000000000")?;
             builder = builder.set_override("default_cred.master_admin_user_id", "00000000-0000-0000-0000-000000000000")?;
-            builder = builder.set_override("default_cred.resource_group_id", "00000000-0000-0000-0000-000000000000")?;
+            builder = builder.set_override("default_cred.resource_group_key", "00000000-0000-0000-0000-000000000000")?;
+            builder = builder.set_override("default_cred.group_id", "00000000-0000-0000-0000-000000000000")?;
             builder = builder.set_override("default_cred.master_api_key", "00000000-0000-0000-0000-000000000000")?;
             builder = builder.set_override("default_cred.resource_ids", vec!["00000000-0000-0000-0000-000000000000"])?;
         }

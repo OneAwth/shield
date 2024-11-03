@@ -16,7 +16,7 @@ impl MigrationTrait for Migration {
                     .col(ColumnDef::new(User::Id).uuid().not_null().primary_key())
                     .col(ColumnDef::new(User::FirstName).string().not_null())
                     .col(ColumnDef::new(User::LastName).string())
-                    .col(ColumnDef::new(User::Email).unique_key().string().not_null())
+                    .col(ColumnDef::new(User::Email).string().not_null())
                     .col(ColumnDef::new(User::EmailVerifiedAt).timestamp_with_time_zone())
                     .col(ColumnDef::new(User::Phone).string())
                     .col(ColumnDef::new(User::Image).string())
@@ -43,6 +43,13 @@ impl MigrationTrait for Migration {
                             .timestamp_with_time_zone()
                             .not_null()
                             .default(chrono::Utc::now()),
+                    )
+                    .index(
+                        Index::create()
+                            .unique()
+                            .name("user_email_and_realm_id_idx")
+                            .col(User::Email)
+                            .col(User::RealmId),
                     )
                     .to_owned(),
             )

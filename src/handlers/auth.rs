@@ -1,4 +1,3 @@
-use axum_extra::either::Either;
 use entity::{
     sea_orm_active_enums::{ApiUserAccess, ApiUserRole},
     session, user,
@@ -16,19 +15,19 @@ use crate::{
     packages::{
         api_token::{verify_and_decode_jwt, ApiUser, RefreshTokenClaims},
         db::AppState,
-        errors::{AuthenticateError, Error},
+        errors::{AuthenticateError, BadRequestError, Error},
         jwt_token::{decode, JwtUser},
         settings::SETTINGS,
     },
     services::{
         auth::{
-            create_session, create_session_and_refresh_token, get_active_refresh_token_by_id, get_active_resource_by_gu,
-            get_active_resource_group_by_rcu, get_active_session_by_id, get_active_sessions_by_user_and_client_id, handle_refresh_token,
+            create_session, create_session_and_refresh_token, get_active_refresh_token_by_id, get_active_resource_by_gu, get_active_session_by_id,
+            get_active_sessions_by_user_and_client_id, handle_refresh_token,
         },
         client::get_active_client_by_id,
-        user::{get_active_user_and_resource_groups, get_active_user_by_id, insert_user},
+        user::{get_active_user_by_email, get_active_user_by_id, insert_user},
     },
-    utils::role_checker::has_access_to_api_cred,
+    utils::{helpers::key_combo_validator::is_client_belongs_to_realm, role_checker::has_access_to_api_cred},
 };
 use axum::{extract::Path, Extension, Json};
 use tracing::debug;
@@ -46,7 +45,7 @@ pub async fn admin_login(
         return Err(Error::Authenticate(AuthenticateError::ActionForbidden));
     }
 
-    let (user, resource_groups) = get_active_user_and_resource_groups(&state.db, Either::E1(payload.email), realm_id, client_id).await?;
+    let user = get_active_user_by_email(&state.db, payload.email, realm_id).await?;
     if !user.verify_password(&payload.password) {
         debug!("Wrong password");
         return Err(Error::Authenticate(AuthenticateError::WrongCredentials));
@@ -60,7 +59,7 @@ pub async fn admin_login(
         return Err(Error::Authenticate(AuthenticateError::MaxConcurrentSessions));
     }
 
-    let login_response = create_session_and_refresh_token(state, user, client, resource_groups, session_info).await?;
+    let login_response = create_session_and_refresh_token(state, user, client, session_info).await?;
     Ok(Json(login_response))
 }
 
@@ -77,8 +76,7 @@ pub async fn login(
         return Err(Error::Authenticate(AuthenticateError::ActionForbidden));
     }
 
-    let (user, resource_groups) = get_active_user_and_resource_groups(&state.db, Either::E1(payload.email), realm_id, client_id).await?;
-
+    let user = get_active_user_by_email(&state.db, payload.email, realm_id).await?;
     if !user.verify_password(&payload.password) {
         debug!("Wrong password");
         return Err(Error::Authenticate(AuthenticateError::WrongCredentials));
@@ -92,7 +90,7 @@ pub async fn login(
         return Err(Error::Authenticate(AuthenticateError::MaxConcurrentSessions));
     }
 
-    let login_response = create_session_and_refresh_token(state, user, client, resource_groups, session_info).await?;
+    let login_response = create_session_and_refresh_token(state, user, client, session_info).await?;
     Ok(Json(login_response))
 }
 
@@ -238,17 +236,26 @@ pub async fn introspect(
         return Err(Error::Authenticate(AuthenticateError::ActionForbidden));
     }
 
+    if !is_client_belongs_to_realm(&state.db, &client_id, &realm_id).await? {
+        return Err(Error::BadRequest(BadRequestError::BadRealmClientCombo));
+    }
+
     let token_data = decode(&payload.access_token, &SETTINGS.read().secrets.signing_key)?;
 
-    if token_data.claims.resource.is_none() || token_data.claims.resource.is_some() && token_data.claims.resource.unwrap().client_id != client_id {
+    if token_data.claims.resource.is_none()
+        || token_data.claims.resource.is_some() && token_data.claims.resource.as_ref().unwrap().client_id != client_id
+    {
         return Err(Error::Authenticate(AuthenticateError::ActionForbidden));
     }
+    let resource = token_data.claims.resource;
 
     let session = get_active_session_by_id(&state.db, token_data.claims.sid).await?;
     let user = get_active_user_by_id(&state.db, session.user_id).await?;
     let client = get_active_client_by_id(&state.db, session.client_id).await?;
-    let resource_group = get_active_resource_group_by_rcu(&state.db, realm_id, session.client_id, session.user_id).await?;
-    let resources = get_active_resource_by_gu(&state.db, resource_group.id, session.user_id).await?;
+    let resources = match resource {
+        Some(resource) => get_active_resource_by_gu(&state.db, resource.group_key).await?,
+        None => Vec::new(),
+    };
 
     Ok(Json(IntrospectResponse {
         active: true,
@@ -261,7 +268,6 @@ pub async fn introspect(
         iat: token_data.claims.iat,
         iss: SETTINGS.read().server.host.clone(),
         client_name: client.name,
-        resource_group: resource_group.name,
         resources: resources.iter().map(|r| r.name.clone()).collect::<Vec<String>>(),
     }))
 }
@@ -285,8 +291,7 @@ pub async fn refresh_token(
 
     let refresh_token = get_active_refresh_token_by_id(&state.db, token_data.claims.sub).await?;
     let client = get_active_client_by_id(&state.db, token_data.claims.cli).await?;
-    let (user, resource_groups) =
-        get_active_user_and_resource_groups(&state.db, Either::E2(refresh_token.user_id), client.realm_id, client.id).await?;
+    let user = get_active_user_by_id(&state.db, token_data.claims.sub).await?;
 
     debug!("Before transaction calls");
     Ok(state
@@ -294,7 +299,7 @@ pub async fn refresh_token(
         .transaction(|txn| {
             Box::pin(async move {
                 let refresh_token_claims = handle_refresh_token(txn, &refresh_token, &client).await.unwrap();
-                let session = create_session(&client, &user, resource_groups, session_info, Some(refresh_token_claims.sub), txn)
+                let session = create_session(&client, &user, None, session_info, Some(refresh_token_claims.sub), txn)
                     .await
                     .unwrap();
                 let refresh_token = refresh_token_claims.create_token(&SETTINGS.read().secrets.signing_key).unwrap();

@@ -140,6 +140,10 @@ impl From<TransactionError<DbErr>> for Error {
 pub enum BadRequestError {
     #[error("Cannot perform operation: {0}")]
     CannotPerformOperation(String),
+    #[error("Default property cannot be deleted")]
+    CannotDeleteDefaultProperty,
+    #[error("Client not belongs to realm")]
+    BadRealmClientCombo,
 }
 
 impl BadRequestError {
@@ -158,8 +162,6 @@ pub enum NotFoundError {
     UserNotFound,
     #[error("Client not found")]
     ClientNotFound,
-    #[error("Resource Group not found")]
-    ResourceGroupNotFound,
     #[error("Resource not found")]
     ResourceNotFound,
 }

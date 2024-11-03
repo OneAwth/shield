@@ -22,7 +22,6 @@ pub struct LoginResponse {
 
 #[derive(Deserialize)]
 pub struct ResourceSubset {
-    pub group_name: String,
     pub identifiers: HashMap<String, String>,
 }
 
@@ -67,7 +66,6 @@ pub struct IntrospectResponse {
     pub iat: usize,
     pub iss: String,
     pub client_name: String,
-    pub resource_group: String,
     pub resources: Vec<String>,
 }
 

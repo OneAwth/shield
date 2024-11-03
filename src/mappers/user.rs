@@ -5,8 +5,7 @@ use serde::Deserialize;
 
 #[derive(Deserialize)]
 pub struct AddResourceRequest {
-    pub group_name: Option<String>,
-    pub group_id: Option<Uuid>,
+    pub client_id: Uuid,
     pub identifiers: HashMap<String, String>,
 }
 
@@ -20,8 +19,7 @@ pub struct UpdateResourceRequest {
 
 #[derive(Deserialize)]
 pub struct UpdateResourceGroupRequest {
-    pub name: String,
-    pub description: Option<String>,
+    pub identifiers: HashMap<String, String>,
     pub is_default: Option<bool>,
     pub lock: Option<bool>,
 }

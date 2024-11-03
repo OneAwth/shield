@@ -35,8 +35,8 @@ pub enum Relation {
     Realm,
     #[sea_orm(has_many = "super::refresh_token::Entity")]
     RefreshToken,
-    #[sea_orm(has_many = "super::resource_group::Entity")]
-    ResourceGroup,
+    #[sea_orm(has_many = "super::resource::Entity")]
+    Resource,
     #[sea_orm(has_many = "super::session::Entity")]
     Session,
 }
@@ -59,9 +59,9 @@ impl Related<super::refresh_token::Entity> for Entity {
     }
 }
 
-impl Related<super::resource_group::Entity> for Entity {
+impl Related<super::resource::Entity> for Entity {
     fn to() -> RelationDef {
-        Relation::ResourceGroup.def()
+        Relation::Resource.def()
     }
 }
 

@@ -4,17 +4,12 @@ use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Eq, Serialize, Deserialize)]
-#[sea_orm(table_name = "resource")]
+#[sea_orm(table_name = "user_group")]
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
-    pub id: Uuid,
     pub user_id: Uuid,
-    pub client_id: Uuid,
-    pub group_key: Uuid,
-    pub name: String,
-    pub value: String,
-    pub description: Option<String>,
-    pub is_default: Option<bool>,
+    #[sea_orm(primary_key, auto_increment = false)]
+    pub group_id: Uuid,
     pub locked_at: Option<DateTimeWithTimeZone>,
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: DateTimeWithTimeZone,
@@ -23,13 +18,13 @@ pub struct Model {
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {
     #[sea_orm(
-        belongs_to = "super::client::Entity",
-        from = "Column::ClientId",
-        to = "super::client::Column::Id",
+        belongs_to = "super::group::Entity",
+        from = "Column::GroupId",
+        to = "super::group::Column::Id",
         on_update = "NoAction",
         on_delete = "Cascade"
     )]
-    Client,
+    Group,
     #[sea_orm(
         belongs_to = "super::user::Entity",
         from = "Column::UserId",
@@ -40,9 +35,9 @@ pub enum Relation {
     User,
 }
 
-impl Related<super::client::Entity> for Entity {
+impl Related<super::group::Entity> for Entity {
     fn to() -> RelationDef {
-        Relation::Client.def()
+        Relation::Group.def()
     }
 }
 
@@ -51,3 +46,5 @@ impl Related<super::user::Entity> for Entity {
         Relation::User.def()
     }
 }
+
+impl ActiveModelBehavior for ActiveModel {}

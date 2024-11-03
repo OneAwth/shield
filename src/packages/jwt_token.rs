@@ -4,7 +4,7 @@ use sea_orm::prelude::Uuid;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-use entity::{client, resource, resource_group, session, user};
+use entity::{client, resource, session, user};
 
 use super::settings::SETTINGS;
 
@@ -17,12 +17,13 @@ static HEADER: Lazy<Header> = Lazy::new(Header::default);
 pub struct Resource {
     pub client_id: Uuid,
     pub client_name: String,
-    pub group_name: String,
+    pub group_key: Uuid,
     pub identifiers: HashMap<String, String>,
 }
 
 impl Resource {
-    fn from(client: &client::Model, resource_group: resource_group::Model, resources: Vec<resource::Model>) -> Self {
+    fn from(client: &client::Model, resources: Vec<resource::Model>) -> Self {
+        let resource_group_key = resources.first().as_ref().unwrap().group_key;
         let mut identifiers = HashMap::new();
         for resource in resources {
             identifiers.insert(resource.name, resource.value);
@@ -31,7 +32,7 @@ impl Resource {
         Self {
             client_id: client.id,
             client_name: client.name.clone(),
-            group_name: resource_group.name,
+            group_key: resource_group_key,
             identifiers,
         }
     }
@@ -52,13 +53,7 @@ pub struct JwtUser {
 }
 
 impl JwtUser {
-    fn from(
-        user: user::Model,
-        client: &client::Model,
-        resource_group: resource_group::Model,
-        resources: Vec<resource::Model>,
-        session: &session::Model,
-    ) -> Self {
+    fn from(user: user::Model, client: &client::Model, resources: Vec<resource::Model>, session: &session::Model) -> Self {
         Self {
             sub: user.id,
             sid: session.id,
@@ -66,7 +61,7 @@ impl JwtUser {
             last_name: user.last_name.unwrap_or_else(|| "".into()),
             email: user.email.clone(),
             phone: user.phone.unwrap_or_else(|| "".into()),
-            resource: Some(Resource::from(client, resource_group, resources)),
+            resource: Some(Resource::from(client, resources)),
         }
     }
 
@@ -98,14 +93,8 @@ pub struct Claims {
 }
 
 impl Claims {
-    pub fn new(
-        user: user::Model,
-        client: &client::Model,
-        resource_group: resource_group::Model,
-        resources: Vec<resource::Model>,
-        session: &session::Model,
-    ) -> Self {
-        let user = JwtUser::from(user, client, resource_group, resources, session);
+    pub fn new(user: user::Model, client: &client::Model, resources: Vec<resource::Model>, session: &session::Model) -> Self {
+        let user = JwtUser::from(user, client, resources, session);
 
         Self {
             exp: session.expires.timestamp() as usize,
@@ -125,13 +114,12 @@ impl Claims {
 pub fn create(
     user: user::Model,
     client: &client::Model,
-    resource_group: resource_group::Model,
     resources: Vec<resource::Model>,
     session: &session::Model,
     secret: &str,
 ) -> Result<String, Error> {
     let encoding_key = EncodingKey::from_secret(secret.as_ref());
-    let claims = Claims::new(user, client, resource_group, resources, session);
+    let claims = Claims::new(user, client, resources, session);
 
     jsonwebtoken::encode(&HEADER, &claims, &encoding_key)
 }

@@ -2,9 +2,10 @@
 
 pub use super::api_user::Entity as ApiUser;
 pub use super::client::Entity as Client;
+pub use super::group::Entity as Group;
 pub use super::realm::Entity as Realm;
 pub use super::refresh_token::Entity as RefreshToken;
 pub use super::resource::Entity as Resource;
-pub use super::resource_group::Entity as ResourceGroup;
 pub use super::session::Entity as Session;
 pub use super::user::Entity as User;
+pub use super::user_group::Entity as UserGroup;

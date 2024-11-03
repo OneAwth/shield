@@ -31,9 +31,11 @@ impl MigrationTrait for Migration {
                             .to(Client::Table, Client::Id)
                             .on_delete(ForeignKeyAction::Cascade),
                     )
+                    .col(ColumnDef::new(Resource::GroupKey).uuid().not_null())
                     .col(ColumnDef::new(Resource::Name).string().not_null())
                     .col(ColumnDef::new(Resource::Value).string().not_null())
                     .col(ColumnDef::new(Resource::Description).string())
+                    .col(ColumnDef::new(Resource::IsDefault).boolean())
                     .col(ColumnDef::new(Resource::LockedAt).timestamp_with_time_zone())
                     .col(
                         ColumnDef::new(Resource::CreatedAt)
@@ -52,6 +54,7 @@ impl MigrationTrait for Migration {
                             .unique()
                             .name("resource_group_id_and_resource_name_idx")
                             .col(Resource::Name)
+                            .col(Resource::GroupKey)
                             .col(Resource::UserId)
                             .col(Resource::ClientId),
                     )
@@ -71,9 +74,11 @@ pub enum Resource {
     Id,
     UserId,
     ClientId,
+    GroupKey,
     Name,
     Value,
     Description,
+    IsDefault,
     LockedAt,
     CreatedAt,
     UpdatedAt,

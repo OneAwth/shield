@@ -27,3 +27,25 @@ pub enum ApiUserRole {
     #[sea_orm(string_value = "realm_admin")]
     RealmAdmin,
 }
+#[derive(Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize)]
+#[sea_orm(rs_type = "String", db_type = "Enum", enum_name = "group_access")]
+#[serde(rename_all = "snake_case")]
+pub enum GroupAccess {
+    #[sea_orm(string_value = "admin")]
+    Admin,
+    #[sea_orm(string_value = "delete")]
+    Delete,
+    #[sea_orm(string_value = "read")]
+    Read,
+    #[sea_orm(string_value = "update")]
+    Update,
+    #[sea_orm(string_value = "write")]
+    Write,
+}
+#[derive(Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize)]
+#[sea_orm(rs_type = "String", db_type = "Enum", enum_name = "group_role")]
+#[serde(rename_all = "snake_case")]
+pub enum GroupRole {
+    #[sea_orm(string_value = "user")]
+    User,
+}

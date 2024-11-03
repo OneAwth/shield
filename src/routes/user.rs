@@ -4,8 +4,8 @@ use axum::{
 };
 
 use crate::handlers::user::{
-    add_resources, delete_resource, delete_resource_group, delete_user, get_resource_group, get_resource_groups, get_resources, get_user, get_users,
-    update_resource, update_resource_group,
+    add_resources, delete_resource, delete_resource_by_group, delete_user, get_resource_group, get_resource_groups, get_resources, get_user,
+    get_users, update_resource, update_resource_group,
 };
 
 pub fn create_routes() -> Router {
@@ -16,8 +16,8 @@ pub fn create_routes() -> Router {
             .nest(
                 "/resource-group",
                 Router::new().route("/", get(get_resource_groups)).nest(
-                    "/:resource_group_id",
-                    Router::new().route("/", get(get_resource_group).patch(update_resource_group).delete(delete_resource_group)),
+                    "/:resource_group_key",
+                    Router::new().route("/", get(get_resource_group).patch(update_resource_group).delete(delete_resource_by_group)),
                 ),
             )
             .nest(

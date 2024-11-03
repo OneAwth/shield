@@ -1,7 +1,7 @@
 use chrono::{Duration, Utc};
 use entity::{
-    api_user, client, realm, resource, resource_group,
-    sea_orm_active_enums::{ApiUserAccess, ApiUserRole},
+    api_user, client, group, realm, resource,
+    sea_orm_active_enums::{ApiUserAccess, ApiUserRole, GroupAccess, GroupRole},
     user,
 };
 use futures::future;
@@ -58,7 +58,8 @@ async fn initialize_db(conn: &DatabaseConnection) -> Result<(), TransactionError
                 client_id: client.id,
                 master_admin_user_id: user.id,
                 master_api_key: ApiUser::create_token(api_user, &SETTINGS.read().secrets.api_key_signing_secret).expect("Failed to create api key"),
-                resource_group_id: resource_assignment_result.resource_group_id,
+                resource_group_key: resource_assignment_result.group_key,
+                group_id: resource_assignment_result.group_id,
                 resource_ids: resource_assignment_result.resource_ids,
             };
 
@@ -131,7 +132,8 @@ async fn create_api_user(conn: &DatabaseTransaction, realm_id: Uuid, client_id: 
 }
 
 struct ResourceAssignmentResult {
-    resource_group_id: Uuid,
+    group_key: Uuid,
+    group_id: Uuid,
     resource_ids: Vec<Uuid>,
 }
 
@@ -141,23 +143,24 @@ async fn assign_resource_to_admin(
     client_id: Uuid,
     user_id: Uuid,
 ) -> Result<ResourceAssignmentResult, Error> {
-    let resource_group_model = resource_group::ActiveModel {
+    let group_model = group::ActiveModel {
         id: Set(Uuid::now_v7()),
-        client_id: Set(client_id),
         realm_id: Set(realm_id),
-        user_id: Set(user_id),
-        name: Set("default_resource_group".to_owned()),
-        description: Set(Some(
-            "This resource group has been created at the time of system initialization.".to_owned(),
-        )),
+        client_id: Set(client_id),
+        name: Set("default_group".to_owned()),
+        role: Set(GroupRole::User),
+        access: Set(GroupAccess::Admin),
         ..Default::default()
     };
-    let inserted_resource_group = resource_group_model.insert(conn).await?;
-    info!("✅ 5/6: Default resource group created");
+    let group = group_model.insert(conn).await?;
+    info!("✅ 5/6: Default group created");
 
+    let group_key = Uuid::now_v7();
     let resource_model = resource::ActiveModel {
         id: Set(Uuid::now_v7()),
-        group_id: Set(inserted_resource_group.id),
+        user_id: Set(user_id),
+        client_id: Set(client_id),
+        group_key: Set(group_key),
         name: Set("role".to_owned()),
         value: Set("admin".to_owned()),
         description: Set(Some("This role has been created at the time of initialization.".to_owned())),
@@ -166,7 +169,9 @@ async fn assign_resource_to_admin(
 
     let new_resource_2 = resource::ActiveModel {
         id: Set(Uuid::now_v7()),
-        group_id: Set(inserted_resource_group.id),
+        user_id: Set(user_id),
+        client_id: Set(client_id),
+        group_key: Set(group_key),
         name: Set("realm".to_owned()),
         value: Set(realm_id.to_string()),
         description: Set(Some("This role has been created at the time of initialization.".to_owned())),
@@ -175,7 +180,8 @@ async fn assign_resource_to_admin(
     let (inserted_resource, inserted_resource_2) = future::try_join(resource_model.insert(conn), new_resource_2.insert(conn)).await?;
     info!("✅ 6/6: Default resource created");
     Ok(ResourceAssignmentResult {
-        resource_group_id: inserted_resource_group.id,
+        group_key,
+        group_id: group.id,
         resource_ids: vec![inserted_resource.id, inserted_resource_2.id],
     })
 }

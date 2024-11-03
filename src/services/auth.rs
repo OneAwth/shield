@@ -12,7 +12,7 @@ use crate::{
     },
 };
 use chrono;
-use entity::{client, refresh_token, resource, resource_group, session, user};
+use entity::{client, refresh_token, resource, session, user};
 use sea_orm::{
     prelude::Uuid, ActiveModelTrait, ColumnTrait, DatabaseConnection, DatabaseTransaction, DbErr, EntityTrait, PaginatorTrait, QueryFilter, Set,
     TransactionTrait,
@@ -81,7 +81,6 @@ pub async fn create_session_and_refresh_token(
     state: Arc<AppState>,
     user: user::Model,
     client: client::Model,
-    resource_groups: resource_group::Model,
     session_info: Arc<SessionInfo>,
 ) -> Result<LoginResponse, Error> {
     Ok(state
@@ -104,15 +103,7 @@ pub async fn create_session_and_refresh_token(
                         None
                     };
 
-                    let session = create_session(
-                        &client,
-                        &user,
-                        resource_groups,
-                        session_info,
-                        refresh_token_model.as_ref().map(|x| x.id),
-                        txn,
-                    )
-                    .await?;
+                    let session = create_session(&client, &user, None, session_info, refresh_token_model.as_ref().map(|x| x.id), txn).await?;
 
                     let refresh_token = if let Some(refresh_token) = refresh_token_model {
                         let claims = RefreshTokenClaims::from(&refresh_token, &client);
@@ -141,7 +132,7 @@ pub async fn create_session_and_refresh_token(
 pub async fn create_session(
     client: &client::Model,
     user: &user::Model,
-    resource_groups: resource_group::Model,
+    resource_group_key: Option<Uuid>,
     session_info: Arc<SessionInfo>,
     refresh_token_id: Option<Uuid>,
     db: &DatabaseTransaction,
@@ -158,17 +149,19 @@ pub async fn create_session(
         return Err(Error::Authenticate(AuthenticateError::MaxConcurrentSessions));
     }
 
-    // Fetch resources
-    let resources = resource::Entity::find()
-        .filter(resource::Column::GroupId.eq(resource_groups.id))
-        .filter(resource::Column::LockedAt.is_null())
-        .all(db)
-        .await?;
+    let mut query = resource::Entity::find()
+        .filter(resource::Column::UserId.eq(user.id))
+        .filter(resource::Column::ClientId.eq(client.id));
 
-    if resources.is_empty() {
-        debug!("No resources found");
-        return Err(Error::Authenticate(AuthenticateError::Locked));
+    match resource_group_key {
+        Some(resource_group_key) => {
+            query = query.filter(resource::Column::GroupKey.eq(resource_group_key));
+        }
+        None => {
+            query = query.filter(resource::Column::IsDefault.eq(true));
+        }
     }
+    let resources = query.filter(resource::Column::LockedAt.is_null()).all(db).await?;
 
     let session_model = session::ActiveModel {
         id: Set(Uuid::now_v7()),
@@ -187,15 +180,7 @@ pub async fn create_session(
     };
     let session = session_model.insert(db).await?;
 
-    let access_token = create(
-        user.clone(),
-        client,
-        resource_groups,
-        resources,
-        &session,
-        &SETTINGS.read().secrets.signing_key,
-    )
-    .unwrap();
+    let access_token = create(user.clone(), client, resources, &session, &SETTINGS.read().secrets.signing_key).unwrap();
 
     Ok(LoginResponse {
         access_token,
@@ -207,34 +192,9 @@ pub async fn create_session(
     })
 }
 
-pub async fn get_active_resource_group_by_rcu(
-    db: &DatabaseConnection,
-    realm_id: Uuid,
-    client_id: Uuid,
-    user_id: Uuid,
-) -> Result<resource_group::Model, Error> {
-    let resource_group = resource_group::Entity::find()
-        .filter(resource_group::Column::RealmId.eq(realm_id))
-        .filter(resource_group::Column::ClientId.eq(client_id))
-        .filter(resource_group::Column::UserId.eq(user_id))
-        .one(db)
-        .await?;
-    if resource_group.is_none() {
-        debug!("No resource group found");
-        return Err(Error::NotFound(NotFoundError::ResourceGroupNotFound));
-    }
-
-    let resource_group = resource_group.unwrap();
-    if resource_group.locked_at.is_some() {
-        debug!("Resource group is locked");
-        return Err(Error::Authenticate(AuthenticateError::Locked));
-    }
-    Ok(resource_group)
-}
-
-pub async fn get_active_resource_by_gu(db: &DatabaseConnection, group_id: Uuid, _user_id: Uuid) -> Result<Vec<resource::Model>, Error> {
+pub async fn get_active_resource_by_gu(db: &DatabaseConnection, group_key: Uuid) -> Result<Vec<resource::Model>, Error> {
     let resource = resource::Entity::find()
-        .filter(resource::Column::GroupId.eq(group_id))
+        .filter(resource::Column::GroupKey.eq(group_key))
         .filter(resource::Column::LockedAt.is_null())
         .all(db)
         .await?;
