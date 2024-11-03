@@ -44,14 +44,14 @@ impl MigrationTrait for Migration {
 }
 
 #[derive(EnumIter, DeriveActiveEnum)]
-#[sea_orm(rs_type = "String", db_type = "Enum", enum_name = "user_role")]
+#[sea_orm(rs_type = "String", db_type = "Enum", enum_name = "group_role")]
 pub enum GroupRole {
     #[sea_orm(string_value = "user")]
     User,
 }
 
 #[derive(EnumIter, DeriveActiveEnum, PartialEq, Eq)]
-#[sea_orm(rs_type = "String", db_type = "Enum", enum_name = "user_access")]
+#[sea_orm(rs_type = "String", db_type = "Enum", enum_name = "group_access")]
 pub enum GroupAccess {
     #[sea_orm(string_value = "read")]
     Read,
