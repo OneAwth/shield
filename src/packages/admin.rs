@@ -182,7 +182,7 @@ async fn assign_resource_to_admin(
 
 fn write_default_cred(default_cred: DefaultCred) -> Result<(), Error> {
     info!("🗝️ Please note these credentials!");
-    println!("{:#?}", default_cred);
+    info!("{:#?}", default_cred);
 
     let file_path = "./logs/default_cred.json";
     let path = Path::new(file_path);
