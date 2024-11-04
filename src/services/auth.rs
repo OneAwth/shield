@@ -103,8 +103,10 @@ pub async fn create_session_and_refresh_token(
                         None
                     };
 
+                    debug!("🚀 Before session creation");
                     let session = create_session(&client, &user, None, session_info, refresh_token_model.as_ref().map(|x| x.id), txn).await?;
 
+                    debug!("🚀 Before refresh token");
                     let refresh_token = if let Some(refresh_token) = refresh_token_model {
                         let claims = RefreshTokenClaims::from(&refresh_token, &client);
                         Some(claims.create_token(&SETTINGS.read().secrets.signing_key).unwrap())
@@ -112,6 +114,7 @@ pub async fn create_session_and_refresh_token(
                         None
                     };
 
+                    debug!("🚀 Before login response");
                     Ok(LoginResponse {
                         access_token: session.access_token,
                         realm_id: user.realm_id,
@@ -192,7 +195,7 @@ pub async fn create_session(
     })
 }
 
-pub async fn get_active_resource_by_gu(db: &DatabaseConnection, group_key: Uuid) -> Result<Vec<resource::Model>, Error> {
+pub async fn get_active_resource_by_gu(db: &DatabaseConnection, group_key: Option<Uuid>) -> Result<Vec<resource::Model>, Error> {
     let resource = resource::Entity::find()
         .filter(resource::Column::GroupKey.eq(group_key))
         .filter(resource::Column::LockedAt.is_null())

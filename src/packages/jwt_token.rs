@@ -17,13 +17,15 @@ static HEADER: Lazy<Header> = Lazy::new(Header::default);
 pub struct Resource {
     pub client_id: Uuid,
     pub client_name: String,
-    pub group_key: Uuid,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub group_key: Option<Uuid>,
+    #[serde(skip_serializing_if = "HashMap::is_empty")]
     pub identifiers: HashMap<String, String>,
 }
 
 impl Resource {
     fn from(client: &client::Model, resources: Vec<resource::Model>) -> Self {
-        let resource_group_key = resources.first().as_ref().unwrap().group_key;
+        let resource_group_key = resources.first().map(|resource| resource.group_key);
         let mut identifiers = HashMap::new();
         for resource in resources {
             identifiers.insert(resource.name, resource.value);
