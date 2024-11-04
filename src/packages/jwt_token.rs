@@ -18,14 +18,13 @@ pub struct Resource {
     pub client_id: Uuid,
     pub client_name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub group_key: Option<Uuid>,
+    pub group_name: Option<String>,
     #[serde(skip_serializing_if = "HashMap::is_empty")]
     pub identifiers: HashMap<String, String>,
 }
 
 impl Resource {
-    fn from(client: &client::Model, resources: Vec<resource::Model>) -> Self {
-        let resource_group_key = resources.first().map(|resource| resource.group_key);
+    fn from(client: &client::Model, resources: Vec<resource::Model>, group_name: Option<String>) -> Self {
         let mut identifiers = HashMap::new();
         for resource in resources {
             identifiers.insert(resource.name, resource.value);
@@ -34,7 +33,7 @@ impl Resource {
         Self {
             client_id: client.id,
             client_name: client.name.clone(),
-            group_key: resource_group_key,
+            group_name,
             identifiers,
         }
     }
@@ -55,7 +54,13 @@ pub struct JwtUser {
 }
 
 impl JwtUser {
-    fn from(user: user::Model, client: &client::Model, resources: Vec<resource::Model>, session: &session::Model) -> Self {
+    fn from(
+        user: user::Model,
+        client: &client::Model,
+        resources: Vec<resource::Model>,
+        group_name: Option<String>,
+        session: &session::Model,
+    ) -> Self {
         Self {
             sub: user.id,
             sid: session.id,
@@ -63,7 +68,7 @@ impl JwtUser {
             last_name: user.last_name.unwrap_or_else(|| "".into()),
             email: user.email.clone(),
             phone: user.phone.unwrap_or_else(|| "".into()),
-            resource: Some(Resource::from(client, resources)),
+            resource: Some(Resource::from(client, resources, group_name)),
         }
     }
 
@@ -95,8 +100,14 @@ pub struct Claims {
 }
 
 impl Claims {
-    pub fn new(user: user::Model, client: &client::Model, resources: Vec<resource::Model>, session: &session::Model) -> Self {
-        let user = JwtUser::from(user, client, resources, session);
+    pub fn new(
+        user: user::Model,
+        client: &client::Model,
+        resources: Vec<resource::Model>,
+        group_name: Option<String>,
+        session: &session::Model,
+    ) -> Self {
+        let user = JwtUser::from(user, client, resources, group_name, session);
 
         Self {
             exp: session.expires.timestamp() as usize,
@@ -117,11 +128,12 @@ pub fn create(
     user: user::Model,
     client: &client::Model,
     resources: Vec<resource::Model>,
+    group_name: Option<String>,
     session: &session::Model,
     secret: &str,
 ) -> Result<String, Error> {
     let encoding_key = EncodingKey::from_secret(secret.as_ref());
-    let claims = Claims::new(user, client, resources, session);
+    let claims = Claims::new(user, client, resources, group_name, session);
 
     jsonwebtoken::encode(&HEADER, &claims, &encoding_key)
 }

@@ -75,7 +75,7 @@ impl ApiUser {
     }
 
     pub async fn validate_cred(db: &DatabaseConnection, api_key: &str) -> Result<ApiUser, Error> {
-        let token_data = verify_and_decode_jwt::<ApiTokenClaims>(api_key, &SETTINGS.read().secrets.signing_key, None)?;
+        let token_data = verify_and_decode_jwt::<ApiTokenClaims>(api_key, &SETTINGS.read().secrets.api_key_signing_secret, None)?;
 
         let api_user = api_user::Entity::find_by_id(token_data.claims.sub).one(db).await?;
         if api_user.is_none() {

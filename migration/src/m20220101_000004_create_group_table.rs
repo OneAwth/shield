@@ -19,6 +19,7 @@ impl MigrationTrait for Migration {
                     .if_not_exists()
                     .col(ColumnDef::new(Group::Id).uuid().not_null().primary_key())
                     .col(ColumnDef::new(Group::Name).string().not_null())
+                    .col(ColumnDef::new(Group::Description).string())
                     .col(ColumnDef::new(Group::Role).custom(GroupRole::name()).not_null())
                     .col(ColumnDef::new(Group::Access).custom(GroupAccess::name()).not_null())
                     .col(ColumnDef::new(Group::LockedAt).timestamp_with_time_zone())
@@ -33,6 +34,14 @@ impl MigrationTrait for Migration {
                     )
                     .col(ColumnDef::new(Group::CreatedAt).timestamp_with_time_zone().not_null().default(Utc::now()))
                     .col(ColumnDef::new(Group::UpdatedAt).timestamp_with_time_zone().not_null().default(Utc::now()))
+                    .index(
+                        Index::create()
+                            .unique()
+                            .name("group_name_client_id_realm_id_idx")
+                            .col(Group::Name)
+                            .col(Group::ClientId)
+                            .col(Group::RealmId),
+                    )
                     .to_owned(),
             )
             .await
@@ -70,6 +79,7 @@ pub enum Group {
     Table,
     Id,
     Name,
+    Description,
     Role,
     Access,
     LockedAt,

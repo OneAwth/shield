@@ -73,7 +73,7 @@ pub struct CreateApiUserResponse {
 impl From<api_user::Model> for CreateApiUserResponse {
     fn from(api_user: api_user::Model) -> Self {
         Self {
-            api_key: Self::create_token(api_user.clone(), &SETTINGS.read().secrets.signing_key).unwrap(),
+            api_key: Self::create_token(api_user.clone(), &SETTINGS.read().secrets.api_key_signing_secret).unwrap(),
             id: api_user.id.to_string(),
             name: api_user.name,
             description: api_user.description,

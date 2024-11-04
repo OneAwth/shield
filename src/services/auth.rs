@@ -12,7 +12,7 @@ use crate::{
     },
 };
 use chrono;
-use entity::{client, refresh_token, resource, session, user};
+use entity::{client, group, refresh_token, resource, session, user};
 use sea_orm::{
     prelude::Uuid, ActiveModelTrait, ColumnTrait, DatabaseConnection, DatabaseTransaction, DbErr, EntityTrait, PaginatorTrait, QueryFilter, Set,
     TransactionTrait,
@@ -80,6 +80,7 @@ pub async fn get_active_sessions_by_user_and_client_id(
 pub async fn create_session_and_refresh_token(
     state: Arc<AppState>,
     user: user::Model,
+    group: group::Model,
     client: client::Model,
     session_info: Arc<SessionInfo>,
 ) -> Result<LoginResponse, Error> {
@@ -103,7 +104,16 @@ pub async fn create_session_and_refresh_token(
                         None
                     };
 
-                    let session = create_session(&client, &user, None, session_info, refresh_token_model.as_ref().map(|x| x.id), txn).await?;
+                    let session = create_session(
+                        &client,
+                        &user,
+                        &group,
+                        None,
+                        session_info,
+                        refresh_token_model.as_ref().map(|x| x.id),
+                        txn,
+                    )
+                    .await?;
 
                     let refresh_token = if let Some(refresh_token) = refresh_token_model {
                         let claims = RefreshTokenClaims::from(&refresh_token, &client);
@@ -132,6 +142,7 @@ pub async fn create_session_and_refresh_token(
 pub async fn create_session(
     client: &client::Model,
     user: &user::Model,
+    group: &group::Model,
     resource_group_key: Option<Uuid>,
     session_info: Arc<SessionInfo>,
     refresh_token_id: Option<Uuid>,
@@ -180,7 +191,15 @@ pub async fn create_session(
     };
     let session = session_model.insert(db).await?;
 
-    let access_token = create(user.clone(), client, resources, &session, &SETTINGS.read().secrets.signing_key).unwrap();
+    let access_token = create(
+        user.clone(),
+        client,
+        resources,
+        group_name,
+        &session,
+        &SETTINGS.read().secrets.signing_key,
+    )
+    .unwrap();
 
     Ok(LoginResponse {
         access_token,
@@ -219,4 +238,25 @@ pub async fn get_active_refresh_token_by_id(db: &DatabaseConnection, id: Uuid) -
         return Err(Error::Authenticate(AuthenticateError::Locked));
     }
     Ok(refresh_token)
+}
+
+pub async fn get_active_group_by_name(db: &DatabaseConnection, group_name: String, user_id: Uuid, client_id: Uuid) -> Result<group::Model, Error> {
+    let group = group::Entity::find()
+        .filter(group::Column::ClientId.eq(client_id))
+        .filter(group::Column::Name.eq(group_name))
+        .find_also_related(user::Entity)
+        .filter(user::Column::Id.eq(user_id))
+        .one(db)
+        .await?;
+    if group.is_none() {
+        debug!("No group found");
+        return Err(Error::NotFound(NotFoundError::GroupNotFound));
+    }
+
+    let group = group.unwrap();
+    if group.locked_at.is_some() {
+        debug!("Group is locked");
+        return Err(Error::Authenticate(AuthenticateError::Locked));
+    }
+    Ok(group)
 }

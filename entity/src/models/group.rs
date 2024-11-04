@@ -11,6 +11,7 @@ pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: Uuid,
     pub name: String,
+    pub description: Option<String>,
     pub role: GroupRole,
     pub access: GroupAccess,
     pub locked_at: Option<DateTimeWithTimeZone>,

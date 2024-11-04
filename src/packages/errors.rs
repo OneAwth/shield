@@ -162,6 +162,8 @@ pub enum NotFoundError {
     UserNotFound,
     #[error("Client not found")]
     ClientNotFound,
+    #[error("Group not found")]
+    GroupNotFound,
     #[error("Resource not found")]
     ResourceNotFound,
 }

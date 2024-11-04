@@ -1,6 +1,6 @@
 use entity::{
     sea_orm_active_enums::{ApiUserAccess, ApiUserRole},
-    session, user,
+    session,
 };
 
 use sea_orm::{prelude::Uuid, ColumnTrait, EntityTrait, QueryFilter, TransactionTrait};
@@ -8,8 +8,8 @@ use std::sync::Arc;
 
 use crate::{
     mappers::auth::{
-        CreateUserRequest, Credentials, IntrospectRequest, IntrospectResponse, LoginResponse, LogoutRequest, LogoutResponse, RefreshTokenRequest,
-        RefreshTokenResponse,
+        CreateUserRequest, CreateUserResponse, IntrospectRequest, IntrospectResponse, LoginRequest, LoginResponse, LogoutRequest, LogoutResponse,
+        RefreshTokenRequest, RefreshTokenResponse,
     },
     middleware::session_info_extractor::SessionInfo,
     packages::{
@@ -21,8 +21,7 @@ use crate::{
     },
     services::{
         auth::{
-            create_session, create_session_and_refresh_token, get_active_refresh_token_by_id, get_active_resource_by_gu, get_active_session_by_id,
-            get_active_sessions_by_user_and_client_id, handle_refresh_token,
+            create_session, create_session_and_refresh_token, get_active_group_by_name, get_active_refresh_token_by_id, get_active_resource_by_gu, get_active_session_by_id, get_active_sessions_by_user_and_client_id, handle_refresh_token
         },
         client::get_active_client_by_id,
         user::{get_active_user_by_email, get_active_user_by_id, insert_user},
@@ -37,7 +36,7 @@ pub async fn admin_login(
     Extension(state): Extension<Arc<AppState>>,
     Extension(session_info): Extension<Arc<SessionInfo>>,
     Path((realm_id, client_id)): Path<(Uuid, Uuid)>,
-    Json(payload): Json<Credentials>,
+    Json(payload): Json<LoginRequest>,
 ) -> Result<Json<LoginResponse>, Error> {
     debug!("🚀 Admin login request received! {:#?}", session_info);
     if !api_user.has_access(ApiUserRole::ClientAdmin, ApiUserAccess::Admin) {
@@ -46,6 +45,7 @@ pub async fn admin_login(
     }
 
     let user = get_active_user_by_email(&state.db, payload.email, realm_id).await?;
+
     if !user.verify_password(&payload.password) {
         debug!("Wrong password");
         return Err(Error::Authenticate(AuthenticateError::WrongCredentials));
@@ -53,6 +53,9 @@ pub async fn admin_login(
 
     let client = get_active_client_by_id(&state.db, client_id).await?;
     let sessions = get_active_sessions_by_user_and_client_id(&state.db, user.id, client.id).await?;
+    let group = match payload.group {
+        Some(group) => get_active_group_by_name(&state.db, group).await?,
+    } get_active_group_by_name(&state.db, payload.group);
 
     if sessions.len() >= client.max_concurrent_sessions as usize {
         debug!("Client has reached max concurrent sessions");
@@ -68,7 +71,7 @@ pub async fn login(
     Extension(state): Extension<Arc<AppState>>,
     Extension(session_info): Extension<Arc<SessionInfo>>,
     Path((realm_id, client_id)): Path<(Uuid, Uuid)>,
-    Json(payload): Json<Credentials>,
+    Json(payload): Json<LoginRequest>,
 ) -> Result<Json<LoginResponse>, Error> {
     debug!("🚀 Login request received! {:#?}", session_info);
     if !api_user.has_access(ApiUserRole::ClientAdmin, ApiUserAccess::Write) {
@@ -99,10 +102,10 @@ pub async fn register(
     Extension(state): Extension<Arc<AppState>>,
     Path((realm_id, client_id)): Path<(Uuid, Uuid)>,
     Json(payload): Json<CreateUserRequest>,
-) -> Result<Json<user::Model>, Error> {
+) -> Result<Json<CreateUserResponse>, Error> {
     if api_user.has_access(ApiUserRole::ClientAdmin, ApiUserAccess::Write) {
         let user = insert_user(&state.db, realm_id, client_id, payload).await?;
-        Ok(Json(user))
+        Ok(Json(CreateUserResponse::from(user)))
     } else {
         Err(Error::Authenticate(AuthenticateError::ActionForbidden))
     }
