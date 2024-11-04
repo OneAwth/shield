@@ -59,7 +59,6 @@ pub async fn admin_login(
         return Err(Error::Authenticate(AuthenticateError::MaxConcurrentSessions));
     }
 
-    debug!("🚀 Before transaction calls");
     let login_response = create_session_and_refresh_token(state, user, client, session_info).await?;
     Ok(Json(login_response))
 }
