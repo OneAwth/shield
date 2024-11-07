@@ -8,7 +8,7 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
 use entity::{
     api_user, client, refresh_token,
-    sea_orm_active_enums::{ApiUserAccess, ApiUserRole},
+    sea_orm_active_enums::{ApiUserAccess, ApiUserScope},
 };
 
 use crate::mappers::client::api_user::create_api_key;
@@ -27,7 +27,7 @@ pub struct ApiTokenClaims {
     pub iat: usize,  // Issued at (as UTC timestamp)
     pub sub: Uuid,   // Subject
     pub iss: String, // Issuer
-    pub role: ApiUserRole,
+    pub role: ApiUserScope,
     pub access: ApiUserAccess,
 }
 
@@ -51,7 +51,7 @@ pub struct ApiUser {
     pub client_id: Uuid,
     pub name: String,
     pub description: Option<String>,
-    pub role: ApiUserRole,
+    pub role: ApiUserScope,
     pub access: ApiUserAccess,
     pub expires: DateTimeWithTimeZone,
 }
@@ -96,7 +96,7 @@ impl ApiUser {
         Ok(Self::from(api_user))
     }
 
-    pub fn has_access(&self, role: ApiUserRole, access: ApiUserAccess) -> bool {
+    pub fn has_access(&self, role: ApiUserScope, access: ApiUserAccess) -> bool {
         if self.role.has_access(role) && self.access.has_access(access) {
             return true;
         }

@@ -3,7 +3,7 @@ use std::sync::Arc;
 use axum::{extract::Path, Extension, Json};
 use entity::{
     realm,
-    sea_orm_active_enums::{ApiUserAccess, ApiUserRole},
+    sea_orm_active_enums::{ApiUserAccess, ApiUserScope},
 };
 use sea_orm::prelude::Uuid;
 
@@ -35,7 +35,7 @@ pub async fn get_realm(
     Extension(state): Extension<Arc<AppState>>,
     Path(realm_id): Path<Uuid>,
 ) -> Result<Json<realm::Model>, Error> {
-    if !api_user.has_access(ApiUserRole::ClientAdmin, ApiUserAccess::Read) {
+    if !api_user.has_access(ApiUserScope::Client, ApiUserAccess::Read) {
         return Err(Error::Authenticate(AuthenticateError::NoResource));
     }
 
@@ -65,7 +65,7 @@ pub async fn update_realm(
     Path(realm_id): Path<Uuid>,
     Json(payload): Json<UpdateRealmRequest>,
 ) -> Result<Json<realm::Model>, Error> {
-    if !api_user.has_access(ApiUserRole::RealmAdmin, ApiUserAccess::Update) {
+    if !api_user.has_access(ApiUserScope::Realm, ApiUserAccess::Update) {
         return Err(Error::Authenticate(AuthenticateError::NoResource));
     }
 

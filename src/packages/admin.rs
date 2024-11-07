@@ -1,7 +1,7 @@
 use chrono::{Duration, Utc};
 use entity::{
     api_user, client, realm, resource, resource_group,
-    sea_orm_active_enums::{ApiUserAccess, ApiUserRole},
+    sea_orm_active_enums::{ApiUserAccess, ApiUserScope},
     user,
 };
 use futures::future;
@@ -119,7 +119,7 @@ async fn create_api_user(conn: &DatabaseTransaction, realm_id: Uuid, client_id: 
         description: Set(Some("This api user has been created at the time of system initialization.".to_owned())),
         realm_id: Set(realm_id),
         client_id: Set(client_id),
-        role: Set(ApiUserRole::RealmAdmin),
+        role: Set(ApiUserScope::Realm),
         access: Set(ApiUserAccess::Admin),
         expires: Set((Utc::now() + Duration::days(30)).into()),
         ..Default::default()

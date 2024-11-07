@@ -4,7 +4,7 @@ use axum::{extract::Path, Extension, Json};
 use chrono::Utc;
 use entity::{
     api_user,
-    sea_orm_active_enums::{ApiUserAccess, ApiUserRole},
+    sea_orm_active_enums::{ApiUserAccess, ApiUserScope},
 };
 use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
 use uuid::Uuid;
@@ -121,7 +121,7 @@ pub async fn delete_api_user(
     Extension(state): Extension<Arc<AppState>>,
     Path((_realm_id, _client_id, api_user_id)): Path<(Uuid, Uuid, Uuid)>,
 ) -> Result<Json<DeleteResponse>, Error> {
-    if !api_user.has_access(ApiUserRole::RealmAdmin, ApiUserAccess::Admin) {
+    if !api_user.has_access(ApiUserScope::Realm, ApiUserAccess::Admin) {
         return Err(Error::Authenticate(AuthenticateError::ActionForbidden));
     }
 

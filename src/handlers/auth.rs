@@ -1,6 +1,6 @@
 use axum_extra::either::Either;
 use entity::{
-    sea_orm_active_enums::{ApiUserAccess, ApiUserRole},
+    sea_orm_active_enums::{ApiUserAccess, ApiUserScope},
     session, user,
 };
 
@@ -41,7 +41,7 @@ pub async fn admin_login(
     Json(payload): Json<Credentials>,
 ) -> Result<Json<LoginResponse>, Error> {
     debug!("🚀 Admin login request received! {:#?}", session_info);
-    if !api_user.has_access(ApiUserRole::ClientAdmin, ApiUserAccess::Admin) {
+    if !api_user.has_access(ApiUserScope::Client, ApiUserAccess::Admin) {
         debug!("No allowed access");
         return Err(Error::Authenticate(AuthenticateError::ActionForbidden));
     }
@@ -72,7 +72,7 @@ pub async fn login(
     Json(payload): Json<Credentials>,
 ) -> Result<Json<LoginResponse>, Error> {
     debug!("🚀 Login request received! {:#?}", session_info);
-    if !api_user.has_access(ApiUserRole::ClientAdmin, ApiUserAccess::Write) {
+    if !api_user.has_access(ApiUserScope::Client, ApiUserAccess::Write) {
         debug!("No allowed access");
         return Err(Error::Authenticate(AuthenticateError::ActionForbidden));
     }
@@ -102,7 +102,7 @@ pub async fn register(
     Path((realm_id, client_id)): Path<(Uuid, Uuid)>,
     Json(payload): Json<CreateUserRequest>,
 ) -> Result<Json<user::Model>, Error> {
-    if api_user.has_access(ApiUserRole::ClientAdmin, ApiUserAccess::Write) {
+    if api_user.has_access(ApiUserScope::Client, ApiUserAccess::Write) {
         let user = insert_user(&state.db, realm_id, client_id, payload).await?;
         Ok(Json(user))
     } else {
@@ -125,7 +125,7 @@ pub async fn logout(
     Path((_, _)): Path<(Uuid, Uuid)>,
     Json(payload): Json<LogoutRequest>,
 ) -> Result<Json<LogoutResponse>, Error> {
-    if !api_user.has_access(ApiUserRole::ClientAdmin, ApiUserAccess::Write) {
+    if !api_user.has_access(ApiUserScope::Client, ApiUserAccess::Write) {
         debug!("No allowed access");
         return Err(Error::Authenticate(AuthenticateError::ActionForbidden));
     }
@@ -184,7 +184,7 @@ pub async fn logout_all(
     Path((_, client_id)): Path<(Uuid, Uuid)>,
     Json(payload): Json<LogoutRequest>,
 ) -> Result<Json<LogoutResponse>, Error> {
-    if !api_user.has_access(ApiUserRole::ClientAdmin, ApiUserAccess::Write) {
+    if !api_user.has_access(ApiUserScope::Client, ApiUserAccess::Write) {
         debug!("No allowed access");
         return Err(Error::Authenticate(AuthenticateError::ActionForbidden));
     }
@@ -233,7 +233,7 @@ pub async fn introspect(
     Path((realm_id, client_id)): Path<(Uuid, Uuid)>,
     Json(payload): Json<IntrospectRequest>,
 ) -> Result<Json<IntrospectResponse>, Error> {
-    if !api_user.has_access(ApiUserRole::ClientAdmin, ApiUserAccess::Read) {
+    if !api_user.has_access(ApiUserScope::Client, ApiUserAccess::Read) {
         debug!("No allowed access");
         return Err(Error::Authenticate(AuthenticateError::ActionForbidden));
     }
@@ -273,7 +273,7 @@ pub async fn refresh_token(
     Path((realm_id, client_id)): Path<(Uuid, Uuid)>,
     Json(payload): Json<RefreshTokenRequest>,
 ) -> Result<Json<RefreshTokenResponse>, Error> {
-    if !has_access_to_api_cred(&user, ApiUserRole::ClientAdmin, ApiUserAccess::Write).await {
+    if !has_access_to_api_cred(&user, ApiUserScope::Client, ApiUserAccess::Write).await {
         debug!("No allowed access");
         return Err(Error::Authenticate(AuthenticateError::ActionForbidden));
     }

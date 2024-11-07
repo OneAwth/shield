@@ -1,4 +1,4 @@
-use crate::sea_orm_active_enums::{ApiUserAccess, ApiUserRole};
+use crate::sea_orm_active_enums::{ApiUserAccess, ApiUserScope};
 use std::cmp::Ordering;
 
 pub mod role_level {
@@ -30,15 +30,15 @@ impl ApiUserAccess {
     }
 }
 
-impl ApiUserRole {
+impl ApiUserScope {
     fn to_level(&self) -> u32 {
         match self {
-            ApiUserRole::RealmAdmin => role_level::REALM_ADMIN,
-            ApiUserRole::ClientAdmin => role_level::CLIENT_ADMIN,
+            ApiUserScope::Realm => role_level::REALM_ADMIN,
+            ApiUserScope::Client => role_level::CLIENT_ADMIN,
         }
     }
 
-    pub fn has_access(&self, required: ApiUserRole) -> bool {
+    pub fn has_access(&self, required: ApiUserScope) -> bool {
         self.to_level() <= required.to_level()
     }
 }
@@ -55,13 +55,13 @@ impl Ord for ApiUserAccess {
     }
 }
 
-impl PartialOrd for ApiUserRole {
+impl PartialOrd for ApiUserScope {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.to_level().cmp(&other.to_level()))
     }
 }
 
-impl Ord for ApiUserRole {
+impl Ord for ApiUserScope {
     fn cmp(&self, other: &Self) -> Ordering {
         self.to_level().cmp(&other.to_level())
     }

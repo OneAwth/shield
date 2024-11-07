@@ -1,7 +1,7 @@
 use chrono::{DateTime, Duration, FixedOffset, Utc};
 use entity::{
     api_user,
-    sea_orm_active_enums::{ApiUserAccess, ApiUserRole},
+    sea_orm_active_enums::{ApiUserAccess, ApiUserScope},
 };
 use jsonwebtoken::{EncodingKey, Header};
 use once_cell::sync::Lazy;
@@ -50,7 +50,7 @@ impl TokenExpires {
 pub struct CreateApiUserRequest {
     pub name: String,
     pub description: Option<String>,
-    pub role: ApiUserRole,
+    pub role: ApiUserScope,
     pub access: ApiUserAccess,
     pub expires: Option<TokenExpires>,
 }
@@ -64,7 +64,7 @@ pub struct CreateApiUserResponse {
     pub api_key: String,
     pub realm_id: String,
     pub client_id: String,
-    pub role: ApiUserRole,
+    pub role: ApiUserScope,
     pub access: ApiUserAccess,
     pub created_at: DateTimeWithTimeZone,
     pub expires_at: DateTimeWithTimeZone,
@@ -103,7 +103,7 @@ pub fn create_api_key(api_user: api_user::Model, secret: &str) -> Result<String,
 pub struct UpdateApiUserRequest {
     pub name: Option<String>,
     pub description: Option<String>,
-    pub role: Option<ApiUserRole>,
+    pub role: Option<ApiUserScope>,
     pub access: Option<ApiUserAccess>,
     pub expires: Option<TokenExpires>,
     pub lock: Option<bool>,
@@ -118,7 +118,7 @@ pub struct UpdateApiUserResponse {
     pub api_key: String,
     pub realm_id: String,
     pub client_id: String,
-    pub role: ApiUserRole,
+    pub role: ApiUserScope,
     pub access: ApiUserAccess,
     pub locked_at: Option<DateTimeWithTimeZone>,
     pub created_at: DateTimeWithTimeZone,

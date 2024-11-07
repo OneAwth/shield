@@ -17,7 +17,7 @@ use crate::{
 use axum::{extract::Path, Extension, Json};
 use entity::{
     client,
-    sea_orm_active_enums::{ApiUserAccess, ApiUserRole},
+    sea_orm_active_enums::{ApiUserAccess, ApiUserScope},
 };
 use sea_orm::prelude::Uuid;
 
@@ -26,7 +26,7 @@ pub async fn get_clients(
     Extension(state): Extension<Arc<AppState>>,
     Path(realm_id): Path<Uuid>,
 ) -> Result<Json<Vec<client::Model>>, Error> {
-    if !api_user.has_access(ApiUserRole::RealmAdmin, ApiUserAccess::Read) {
+    if !api_user.has_access(ApiUserScope::Realm, ApiUserAccess::Read) {
         return Err(Error::Authenticate(AuthenticateError::NoResource));
     }
 
@@ -39,7 +39,7 @@ pub async fn get_client(
     Extension(state): Extension<Arc<AppState>>,
     Path((realm_id, client_id)): Path<(Uuid, Uuid)>,
 ) -> Result<Json<client::Model>, Error> {
-    if !api_user.has_access(ApiUserRole::ClientAdmin, ApiUserAccess::Read) {
+    if !api_user.has_access(ApiUserScope::Client, ApiUserAccess::Read) {
         return Err(Error::Authenticate(AuthenticateError::NoResource));
     }
 
@@ -61,7 +61,7 @@ pub async fn create_client(
     Path(realm_id): Path<Uuid>,
     Json(payload): Json<CreateClientRequest>,
 ) -> Result<Json<client::Model>, Error> {
-    if !api_user.has_access(ApiUserRole::RealmAdmin, ApiUserAccess::Admin) {
+    if !api_user.has_access(ApiUserScope::Realm, ApiUserAccess::Admin) {
         return Err(Error::Authenticate(AuthenticateError::NoResource));
     }
 
@@ -75,7 +75,7 @@ pub async fn update_client(
     Path((realm_id, client_id)): Path<(Uuid, Uuid)>,
     Json(payload): Json<UpdateClientRequest>,
 ) -> Result<Json<client::Model>, Error> {
-    if !api_user.has_access(ApiUserRole::ClientAdmin, ApiUserAccess::Update) {
+    if !api_user.has_access(ApiUserScope::Client, ApiUserAccess::Update) {
         return Err(Error::Authenticate(AuthenticateError::NoResource));
     }
 
