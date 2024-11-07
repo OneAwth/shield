@@ -13,15 +13,17 @@ pub enum ApiUserAccess {
     Delete,
     #[sea_orm(string_value = "read")]
     Read,
+    #[sea_orm(string_value = "update")]
+    Update,
     #[sea_orm(string_value = "write")]
     Write,
 }
 #[derive(Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize)]
-#[sea_orm(rs_type = "String", db_type = "Enum", enum_name = "api_user_role")]
+#[sea_orm(rs_type = "String", db_type = "Enum", enum_name = "api_user_scope")]
 #[serde(rename_all = "snake_case")]
-pub enum ApiUserRole {
-    #[sea_orm(string_value = "client_admin")]
-    ClientAdmin,
-    #[sea_orm(string_value = "realm_admin")]
-    RealmAdmin,
+pub enum ApiUserScope {
+    #[sea_orm(string_value = "client")]
+    Client,
+    #[sea_orm(string_value = "realm")]
+    Realm,
 }

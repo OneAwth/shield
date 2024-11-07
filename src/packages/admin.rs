@@ -1,4 +1,9 @@
-use entity::{client, realm, resource, resource_group, user};
+use chrono::{Duration, Utc};
+use entity::{
+    api_user, client, realm, resource, resource_group,
+    sea_orm_active_enums::{ApiUserAccess, ApiUserScope},
+    user,
+};
 use futures::future;
 use sea_orm::{
     prelude::Uuid, ActiveModelTrait, ColumnTrait, DatabaseConnection, DatabaseTransaction, EntityTrait, QueryFilter, Set, TransactionError,
@@ -17,7 +22,7 @@ use crate::{
     utils::{hash::generate_password_hash, helpers::default_cred::DefaultCred},
 };
 
-use super::{db::AppState, errors::Error};
+use super::{api_token::ApiUser, db::AppState, errors::Error};
 
 pub async fn setup(state: &AppState) -> Result<bool, TransactionError<Error>> {
     info!("Checking ADMIN availability!");
@@ -45,12 +50,14 @@ async fn initialize_db(conn: &DatabaseConnection) -> Result<(), TransactionError
             let realm = create_master_realm(txn).await?;
             let client = create_default_client(txn, realm.id).await?;
             let user = create_admin_user(txn, realm.id).await?;
+            let api_user = create_api_user(txn, realm.id, client.id).await?;
             let resource_assignment_result = assign_resource_to_admin(txn, realm.id, client.id, user.id).await?;
 
             let default_cred = DefaultCred {
                 realm_id: realm.id,
                 client_id: client.id,
                 master_admin_user_id: user.id,
+                master_api_key: ApiUser::create_token(api_user, &SETTINGS.read().secrets.api_key_signing_secret).expect("Failed to create api key"),
                 resource_group_id: resource_assignment_result.resource_group_id,
                 resource_ids: resource_assignment_result.resource_ids,
             };
@@ -69,7 +76,7 @@ async fn create_master_realm(conn: &DatabaseTransaction) -> Result<realm::Model,
         ..Default::default()
     };
     let inserted_realm = realm_model.insert(conn).await?;
-    info!("✅ 1/5: Master realm created");
+    info!("✅ 1/6: Master realm created");
 
     Ok(inserted_realm)
 }
@@ -82,7 +89,7 @@ async fn create_default_client(conn: &DatabaseTransaction, realm_id: Uuid) -> Re
         ..Default::default()
     };
     let inserted_client = client_model.insert(conn).await?;
-    info!("✅ 2/5: Default client created");
+    info!("✅ 2/6: Default client created");
 
     Ok(inserted_client)
 }
@@ -100,9 +107,27 @@ async fn create_admin_user(conn: &DatabaseTransaction, realm_id: Uuid) -> Result
         ..Default::default()
     };
     let inserted_user = user_model.insert(conn).await?;
-    info!("✅ 3/5: Admin user created");
+    info!("✅ 3/6: Admin user created");
 
     Ok(inserted_user)
+}
+
+async fn create_api_user(conn: &DatabaseTransaction, realm_id: Uuid, client_id: Uuid) -> Result<api_user::Model, Error> {
+    let api_user_model = api_user::ActiveModel {
+        id: Set(Uuid::now_v7()),
+        name: Set("master_realm_default_api_user".to_owned()),
+        description: Set(Some("This api user has been created at the time of system initialization.".to_owned())),
+        realm_id: Set(realm_id),
+        client_id: Set(client_id),
+        role: Set(ApiUserScope::Realm),
+        access: Set(ApiUserAccess::Admin),
+        expires: Set((Utc::now() + Duration::days(30)).into()),
+        ..Default::default()
+    };
+    let inserted_api_user = api_user_model.insert(conn).await?;
+    info!("✅ 4/6: Default api user created");
+
+    Ok(inserted_api_user)
 }
 
 struct ResourceAssignmentResult {
@@ -128,7 +153,7 @@ async fn assign_resource_to_admin(
         ..Default::default()
     };
     let inserted_resource_group = resource_group_model.insert(conn).await?;
-    info!("✅ 4/5: Default resource group created");
+    info!("✅ 5/6: Default resource group created");
 
     let resource_model = resource::ActiveModel {
         id: Set(Uuid::now_v7()),
@@ -148,7 +173,7 @@ async fn assign_resource_to_admin(
         ..Default::default()
     };
     let (inserted_resource, inserted_resource_2) = future::try_join(resource_model.insert(conn), new_resource_2.insert(conn)).await?;
-    info!("✅ 5/5: Default resource created");
+    info!("✅ 6/6: Default resource created");
     Ok(ResourceAssignmentResult {
         resource_group_id: inserted_resource_group.id,
         resource_ids: vec![inserted_resource.id, inserted_resource_2.id],
@@ -157,7 +182,7 @@ async fn assign_resource_to_admin(
 
 fn write_default_cred(default_cred: DefaultCred) -> Result<(), Error> {
     info!("🗝️ Please note these credentials!");
-    println!("{:#?}", default_cred);
+    info!("{:#?}", default_cred);
 
     let file_path = "./logs/default_cred.json";
     let path = Path::new(file_path);

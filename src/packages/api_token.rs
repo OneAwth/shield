@@ -2,14 +2,16 @@ use jsonwebtoken::{errors::Error as JwtError, DecodingKey, EncodingKey, Header, 
 use once_cell::sync::Lazy;
 use sea_orm::{
     prelude::{DateTimeWithTimeZone, Uuid},
-    DatabaseConnection,
+    DatabaseConnection, EntityTrait,
 };
-use serde::{Deserialize, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
 use entity::{
     api_user, client, refresh_token,
-    sea_orm_active_enums::{ApiUserAccess, ApiUserRole},
+    sea_orm_active_enums::{ApiUserAccess, ApiUserScope},
 };
+
+use crate::mappers::client::api_user::create_api_key;
 
 use super::{
     errors::{AuthenticateError, Error},
@@ -19,6 +21,29 @@ use super::{
 static VALIDATION: Lazy<Validation> = Lazy::new(Validation::default);
 static HEADER: Lazy<Header> = Lazy::new(Header::default);
 
+#[derive(Deserialize, Serialize)]
+pub struct ApiTokenClaims {
+    pub exp: usize,  // Expiration time (as UTC timestamp). validate_exp defaults to true in validation
+    pub iat: usize,  // Issued at (as UTC timestamp)
+    pub sub: Uuid,   // Subject
+    pub iss: String, // Issuer
+    pub role: ApiUserScope,
+    pub access: ApiUserAccess,
+}
+
+impl ApiTokenClaims {
+    pub fn new(api_user: api_user::Model) -> Self {
+        Self {
+            exp: chrono::Local::now().timestamp() as usize + api_user.expires.timestamp() as usize,
+            iat: chrono::Local::now().timestamp() as usize,
+            sub: api_user.id,
+            iss: SETTINGS.read().server.host.clone(),
+            role: api_user.role,
+            access: api_user.access,
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ApiUser {
     pub id: Uuid,
@@ -26,7 +51,7 @@ pub struct ApiUser {
     pub client_id: Uuid,
     pub name: String,
     pub description: Option<String>,
-    pub role: ApiUserRole,
+    pub role: ApiUserScope,
     pub access: ApiUserAccess,
     pub expires: DateTimeWithTimeZone,
 }
@@ -45,17 +70,14 @@ impl ApiUser {
         }
     }
 
-    pub async fn validate_cred(db: &DatabaseConnection, api_key: &str) -> Result<ApiUser, Error> {
-        let parts = api_key.split('.').collect::<Vec<&str>>();
-        if parts.len() != 2 {
-            return Err(Error::Authenticate(AuthenticateError::InvalidApiCredentials));
-        }
-        let id = parts[0]
-            .parse::<Uuid>()
-            .map_err(|_| Error::Authenticate(AuthenticateError::InvalidApiCredentials))?;
-        let secret = parts[1];
+    pub fn create_token(api_user: api_user::Model, secret: &str) -> Result<String, JwtError> {
+        create_api_key(api_user, secret)
+    }
 
-        let api_user = api_user::Entity::find_active_by_id(db, id).await?;
+    pub async fn validate_cred(db: &DatabaseConnection, api_key: &str) -> Result<ApiUser, Error> {
+        let token_data = verify_and_decode_jwt::<ApiTokenClaims>(api_key, &SETTINGS.read().secrets.api_key_signing_secret, None)?;
+
+        let api_user = api_user::Entity::find_by_id(token_data.claims.sub).one(db).await?;
         if api_user.is_none() {
             return Err(Error::Authenticate(AuthenticateError::InvalidApiCredentials));
         }
@@ -71,11 +93,18 @@ impl ApiUser {
             }
         }
 
-        if api_user.secret != secret {
-            return Err(Error::Authenticate(AuthenticateError::InvalidApiCredentials));
-        }
-
         Ok(Self::from(api_user))
+    }
+
+    pub fn has_access(&self, role: ApiUserScope, access: ApiUserAccess) -> bool {
+        if self.role.has_access(role) && self.access.has_access(access) {
+            return true;
+        }
+        false
+    }
+
+    pub fn is_master_realm_admin(&self) -> bool {
+        self.realm_id == SETTINGS.read().default_cred.realm_id
     }
 }
 
@@ -109,8 +138,11 @@ impl RefreshTokenClaims {
     }
 }
 
-pub fn decode_refresh_token(token: &str, secret: &str) -> Result<TokenData<RefreshTokenClaims>, JwtError> {
+pub fn verify_and_decode_jwt<T>(token: &str, secret: &str, validation: Option<&Validation>) -> Result<TokenData<T>, JwtError>
+where
+    T: DeserializeOwned,
+{
     let decoding_key = DecodingKey::from_secret(secret.as_ref());
-
-    jsonwebtoken::decode::<RefreshTokenClaims>(token, &decoding_key, &VALIDATION)
+    let validation = validation.unwrap_or(&VALIDATION);
+    jsonwebtoken::decode::<T>(token, &decoding_key, validation)
 }

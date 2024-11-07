@@ -10,7 +10,6 @@ pub struct Model {
     pub id: Uuid,
     pub first_name: String,
     pub last_name: Option<String>,
-    #[sea_orm(unique)]
     pub email: String,
     pub email_verified_at: Option<DateTimeWithTimeZone>,
     pub phone: Option<String>,

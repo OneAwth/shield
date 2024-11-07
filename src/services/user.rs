@@ -1,7 +1,13 @@
-use crate::{mappers::auth::CreateUserRequest, packages::errors::Error, utils::hash::generate_password_hash};
+use crate::{
+    mappers::auth::CreateUserRequest,
+    packages::errors::{AuthenticateError, Error, NotFoundError},
+    utils::hash::generate_password_hash,
+};
+use axum_extra::either::Either;
 use entity::{resource, resource_group, user};
 use futures::future::join_all;
-use sea_orm::{prelude::Uuid, ActiveModelTrait, DatabaseConnection, Set};
+use sea_orm::{prelude::Uuid, ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
+use tracing::debug;
 
 pub async fn insert_user(db: &DatabaseConnection, realm_id: Uuid, client_id: Uuid, payload: CreateUserRequest) -> Result<user::Model, Error> {
     let password_hash = generate_password_hash(payload.password).await?;
@@ -48,4 +54,64 @@ pub async fn insert_user(db: &DatabaseConnection, realm_id: Uuid, client_id: Uui
     join_all(futures).await;
 
     Ok(user)
+}
+
+pub async fn get_active_user_by_id(db: &DatabaseConnection, id: Uuid) -> Result<user::Model, Error> {
+    let user = user::Entity::find_by_id(id).one(db).await?;
+    if user.is_none() {
+        debug!("No user found");
+        return Err(Error::NotFound(NotFoundError::UserNotFound));
+    }
+
+    let user = user.unwrap();
+    if user.locked_at.is_some() {
+        debug!("User is locked");
+        return Err(Error::Authenticate(AuthenticateError::Locked));
+    }
+    Ok(user)
+}
+
+pub async fn get_active_user_and_resource_groups(
+    db: &DatabaseConnection,
+    user_identifier: Either<String, Uuid>,
+    realm_id: Uuid,
+    client_id: Uuid,
+) -> Result<(user::Model, resource_group::Model), Error> {
+    let mut query = user::Entity::find();
+    query = match user_identifier {
+        Either::E1(email) => query.filter(user::Column::Email.eq(email)),
+        Either::E2(user_id) => query.filter(user::Column::Id.eq(user_id)),
+    };
+
+    let user_with_resource_groups = query
+        .find_also_related(resource_group::Entity)
+        .filter(resource_group::Column::RealmId.eq(realm_id))
+        .filter(resource_group::Column::ClientId.eq(client_id))
+        .one(db)
+        .await?;
+
+    if user_with_resource_groups.is_none() {
+        debug!("No matching data found");
+        return Err(Error::not_found());
+    }
+
+    let (user, resource_groups) = user_with_resource_groups.unwrap();
+
+    if user.locked_at.is_some() {
+        debug!("User is locked");
+        return Err(Error::Authenticate(AuthenticateError::Locked));
+    }
+
+    if resource_groups.is_none() {
+        debug!("No matching resource group found");
+        return Err(Error::not_found());
+    }
+
+    let resource_groups = resource_groups.unwrap();
+    if resource_groups.locked_at.is_some() {
+        debug!("Resource group is locked");
+        return Err(Error::Authenticate(AuthenticateError::Locked));
+    }
+
+    Ok((user, resource_groups))
 }

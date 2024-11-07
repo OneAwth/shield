@@ -1,236 +1,108 @@
-use chrono::Utc;
+use axum_extra::either::Either;
 use entity::{
-    client, refresh_token, resource, resource_group,
-    sea_orm_active_enums::{ApiUserAccess, ApiUserRole},
+    sea_orm_active_enums::{ApiUserAccess, ApiUserScope},
     session, user,
 };
 
-use sea_orm::{
-    prelude::Uuid, ActiveModelTrait, ColumnTrait, DatabaseTransaction, DbErr, EntityTrait, PaginatorTrait, QueryFilter, Set, TransactionTrait,
-};
+use sea_orm::{prelude::Uuid, ColumnTrait, EntityTrait, QueryFilter, TransactionTrait};
 use std::sync::Arc;
 
 use crate::{
     mappers::auth::{
-        CreateUserRequest, IntrospectRequest, IntrospectResponse, LogoutRequest, LogoutResponse, RefreshTokenRequest, RefreshTokenResponse,
+        CreateUserRequest, Credentials, IntrospectRequest, IntrospectResponse, LoginResponse, LogoutRequest, LogoutResponse, RefreshTokenRequest,
+        RefreshTokenResponse,
     },
     middleware::session_info_extractor::SessionInfo,
     packages::{
-        api_token::{decode_refresh_token, ApiUser, RefreshTokenClaims},
+        api_token::{verify_and_decode_jwt, ApiUser, RefreshTokenClaims},
         db::AppState,
         errors::{AuthenticateError, Error},
-        jwt_token::{create, decode, JwtUser},
+        jwt_token::{decode, JwtUser},
         settings::SETTINGS,
     },
-    services::{auth::handle_refresh_token, user::insert_user},
-    utils::role_checker::{has_access_to_api_cred, is_current_realm_admin, is_master_realm_admin},
+    services::{
+        auth::{
+            create_session, create_session_and_refresh_token, get_active_refresh_token_by_id, get_active_resource_by_gu,
+            get_active_resource_group_by_rcu, get_active_session_by_id, get_active_sessions_by_user_and_client_id, handle_refresh_token,
+        },
+        client::get_active_client_by_id,
+        user::{get_active_user_and_resource_groups, get_active_user_by_id, insert_user},
+    },
+    utils::role_checker::has_access_to_api_cred,
 };
 use axum::{extract::Path, Extension, Json};
-use serde::{Deserialize, Serialize};
 use tracing::debug;
 
-#[derive(Deserialize)]
-pub struct Credentials {
-    email: String,
-    password: String,
-}
+pub async fn admin_login(
+    api_user: ApiUser,
+    Extension(state): Extension<Arc<AppState>>,
+    Extension(session_info): Extension<Arc<SessionInfo>>,
+    Path((realm_id, client_id)): Path<(Uuid, Uuid)>,
+    Json(payload): Json<Credentials>,
+) -> Result<Json<LoginResponse>, Error> {
+    debug!("🚀 Admin login request received! {:#?}", session_info);
+    if !api_user.has_access(ApiUserScope::Client, ApiUserAccess::Admin) {
+        debug!("No allowed access");
+        return Err(Error::Authenticate(AuthenticateError::ActionForbidden));
+    }
 
-#[derive(Serialize)]
-pub struct LoginResponse {
-    access_token: String,
-    user: user::Model,
-    session_id: Uuid,
-    realm_id: Uuid,
-    client_id: Uuid,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    refresh_token: Option<String>,
+    let (user, resource_groups) = get_active_user_and_resource_groups(&state.db, Either::E1(payload.email), realm_id, client_id).await?;
+    if !user.verify_password(&payload.password) {
+        debug!("Wrong password");
+        return Err(Error::Authenticate(AuthenticateError::WrongCredentials));
+    }
+
+    let client = get_active_client_by_id(&state.db, client_id).await?;
+    let sessions = get_active_sessions_by_user_and_client_id(&state.db, user.id, client.id).await?;
+
+    if sessions.len() >= client.max_concurrent_sessions as usize {
+        debug!("Client has reached max concurrent sessions");
+        return Err(Error::Authenticate(AuthenticateError::MaxConcurrentSessions));
+    }
+
+    let login_response = create_session_and_refresh_token(state, user, client, resource_groups, session_info).await?;
+    Ok(Json(login_response))
 }
 
 pub async fn login(
+    api_user: ApiUser,
     Extension(state): Extension<Arc<AppState>>,
     Extension(session_info): Extension<Arc<SessionInfo>>,
     Path((realm_id, client_id)): Path<(Uuid, Uuid)>,
     Json(payload): Json<Credentials>,
 ) -> Result<Json<LoginResponse>, Error> {
     debug!("🚀 Login request received! {:#?}", session_info);
-
-    let user_with_resource_groups = user::Entity::find()
-        .filter(user::Column::Email.eq(payload.email))
-        .find_also_related(resource_group::Entity)
-        .filter(resource_group::Column::RealmId.eq(realm_id))
-        .filter(resource_group::Column::ClientId.eq(client_id))
-        .one(&state.db)
-        .await?;
-
-    if user_with_resource_groups.is_none() {
-        debug!("No matching data found");
-        return Err(Error::not_found());
+    if !api_user.has_access(ApiUserScope::Client, ApiUserAccess::Write) {
+        debug!("No allowed access");
+        return Err(Error::Authenticate(AuthenticateError::ActionForbidden));
     }
 
-    let (user, resource_groups) = user_with_resource_groups.unwrap();
+    let (user, resource_groups) = get_active_user_and_resource_groups(&state.db, Either::E1(payload.email), realm_id, client_id).await?;
+
     if !user.verify_password(&payload.password) {
         debug!("Wrong password");
         return Err(Error::Authenticate(AuthenticateError::WrongCredentials));
     }
-    if user.locked_at.is_some() {
-        debug!("User is locked");
-        return Err(Error::Authenticate(AuthenticateError::Locked));
-    }
 
-    if resource_groups.is_none() {
-        debug!("No matching resource group found");
-        return Err(Error::not_found());
-    }
+    let client = get_active_client_by_id(&state.db, client_id).await?;
+    let sessions = get_active_sessions_by_user_and_client_id(&state.db, user.id, client.id).await?;
 
-    let resource_groups = resource_groups.unwrap();
-    if resource_groups.locked_at.is_some() {
-        debug!("Resource group is locked");
-        return Err(Error::Authenticate(AuthenticateError::Locked));
-    }
-
-    // Fetch client separately
-    let client = client::Entity::find_by_id(client_id).one(&state.db).await?.ok_or_else(|| {
-        debug!("No client found");
-        Error::not_found()
-    })?;
-
-    if client.locked_at.is_some() {
-        debug!("Client is locked");
-        return Err(Error::Authenticate(AuthenticateError::Locked));
-    }
-
-    let login_response = state
-        .db
-        .transaction(|txn| {
-            Box::pin(async move {
-                let result: Result<LoginResponse, Error> = async {
-                    let refresh_token_model = if client.use_refresh_token {
-                        let model = refresh_token::ActiveModel {
-                            id: Set(Uuid::now_v7()),
-                            user_id: Set(user.id),
-                            client_id: Set(Some(client_id)),
-                            realm_id: Set(realm_id),
-                            re_used_count: Set(0),
-                            locked_at: Set(None),
-                            ..Default::default()
-                        };
-                        Some(model.insert(txn).await?)
-                    } else {
-                        None
-                    };
-
-                    let session = create_session(
-                        &client,
-                        &user,
-                        resource_groups,
-                        session_info,
-                        refresh_token_model.as_ref().map(|x| x.id),
-                        txn,
-                    )
-                    .await?;
-
-                    let refresh_token = if let Some(refresh_token) = refresh_token_model {
-                        let claims = RefreshTokenClaims::from(&refresh_token, &client);
-                        Some(claims.create_token(&SETTINGS.read().secrets.signing_key).unwrap())
-                    } else {
-                        None
-                    };
-
-                    Ok(LoginResponse {
-                        access_token: session.access_token,
-                        realm_id: user.realm_id,
-                        user,
-                        session_id: session.session_id,
-                        client_id: client.id,
-                        refresh_token,
-                    })
-                }
-                .await;
-
-                result.map_err(|e| DbErr::Custom(e.to_string()))
-            })
-        })
-        .await?;
-
-    Ok(Json(login_response))
-}
-
-async fn create_session(
-    client: &client::Model,
-    user: &user::Model,
-    resource_groups: resource_group::Model,
-    session_info: Arc<SessionInfo>,
-    refresh_token_id: Option<Uuid>,
-    db: &DatabaseTransaction,
-) -> Result<LoginResponse, Error> {
-    let sessions = session::Entity::find()
-        .filter(session::Column::ClientId.eq(client.id))
-        .filter(session::Column::UserId.eq(user.id))
-        .filter(session::Column::Expires.gt(chrono::Utc::now()))
-        .count(db)
-        .await?;
-
-    if sessions >= client.max_concurrent_sessions as u64 {
+    if sessions.len() >= client.max_concurrent_sessions as usize {
         debug!("Client has reached max concurrent sessions");
         return Err(Error::Authenticate(AuthenticateError::MaxConcurrentSessions));
     }
 
-    // Fetch resources
-    let resources = resource::Entity::find()
-        .filter(resource::Column::GroupId.eq(resource_groups.id))
-        .filter(resource::Column::LockedAt.is_null())
-        .all(db)
-        .await?;
-
-    if resources.is_empty() {
-        debug!("No resources found");
-        return Err(Error::Authenticate(AuthenticateError::Locked));
-    }
-
-    let session_model = session::ActiveModel {
-        id: Set(Uuid::now_v7()),
-        user_id: Set(user.id),
-        client_id: Set(client.id),
-        ip_address: Set(session_info.ip_address.to_string()),
-        user_agent: Set(Some(session_info.user_agent.to_string())),
-        browser: Set(Some(session_info.browser.to_string())),
-        browser_version: Set(Some(session_info.browser_version.to_string())),
-        operating_system: Set(Some(session_info.operating_system.to_string())),
-        device_type: Set(Some(session_info.device_type.to_string())),
-        country_code: Set(session_info.country_code.to_string()),
-        refresh_token_id: Set(refresh_token_id),
-        expires: Set((Utc::now() + chrono::Duration::seconds(client.session_lifetime as i64)).into()),
-        ..Default::default()
-    };
-    let session = session_model.insert(db).await?;
-
-    let access_token = create(
-        user.clone(),
-        client,
-        resource_groups,
-        resources,
-        &session,
-        &SETTINGS.read().secrets.signing_key,
-    )
-    .unwrap();
-
-    Ok(LoginResponse {
-        access_token,
-        realm_id: user.realm_id,
-        user: user.clone(),
-        session_id: session.id,
-        client_id: client.id,
-        refresh_token: None,
-    })
+    let login_response = create_session_and_refresh_token(state, user, client, resource_groups, session_info).await?;
+    Ok(Json(login_response))
 }
 
 pub async fn register(
-    user: JwtUser,
+    api_user: ApiUser,
     Extension(state): Extension<Arc<AppState>>,
     Path((realm_id, client_id)): Path<(Uuid, Uuid)>,
     Json(payload): Json<CreateUserRequest>,
 ) -> Result<Json<user::Model>, Error> {
-    if is_master_realm_admin(&user) || is_current_realm_admin(&user, &realm_id.to_string()) {
+    if api_user.has_access(ApiUserScope::Client, ApiUserAccess::Write) {
         let user = insert_user(&state.db, realm_id, client_id, payload).await?;
         Ok(Json(user))
     } else {
@@ -248,43 +120,44 @@ pub async fn logout_current_session(user: JwtUser, Extension(state): Extension<A
 }
 
 pub async fn logout(
-    user: JwtUser,
+    api_user: ApiUser,
     Extension(state): Extension<Arc<AppState>>,
-    Path((realm_id, _)): Path<(Uuid, Uuid)>,
+    Path((_, _)): Path<(Uuid, Uuid)>,
     Json(payload): Json<LogoutRequest>,
 ) -> Result<Json<LogoutResponse>, Error> {
-    if is_master_realm_admin(&user) || is_current_realm_admin(&user, &realm_id.to_string()) {
-        match payload.access_token {
-            Some(access_token) => {
-                let sid = decode(&access_token, &SETTINGS.read().secrets.signing_key)
+    if !api_user.has_access(ApiUserScope::Client, ApiUserAccess::Write) {
+        debug!("No allowed access");
+        return Err(Error::Authenticate(AuthenticateError::ActionForbidden));
+    }
+
+    match payload.access_token {
+        Some(access_token) => {
+            let claims = decode(&access_token, &SETTINGS.read().secrets.signing_key)
+                .map_err(|_| AuthenticateError::InvalidToken)?
+                .claims;
+
+            let result = session::Entity::delete_by_id(claims.sid).exec(&state.db).await?;
+            Ok(Json(LogoutResponse {
+                ok: result.rows_affected == 1,
+                user_id: claims.sub,
+                session_id: claims.sid,
+            }))
+        }
+        None => match payload.refresh_token {
+            Some(refresh_token) => {
+                let claims = decode(&refresh_token, &SETTINGS.read().secrets.signing_key)
                     .map_err(|_| AuthenticateError::InvalidToken)?
-                    .claims
-                    .sid;
-                let result = session::Entity::delete_by_id(sid).exec(&state.db).await?;
+                    .claims;
+
+                let result = session::Entity::delete_by_id(claims.sid).exec(&state.db).await?;
                 Ok(Json(LogoutResponse {
                     ok: result.rows_affected == 1,
-                    user_id: user.sub,
-                    session_id: user.sid,
+                    user_id: claims.sub,
+                    session_id: claims.sid,
                 }))
             }
-            None => match payload.refresh_token {
-                Some(refresh_token) => {
-                    let sid = decode(&refresh_token, &SETTINGS.read().secrets.signing_key)
-                        .map_err(|_| AuthenticateError::InvalidToken)?
-                        .claims
-                        .sid;
-                    let result = session::Entity::delete_by_id(sid).exec(&state.db).await?;
-                    Ok(Json(LogoutResponse {
-                        ok: result.rows_affected == 1,
-                        user_id: user.sub,
-                        session_id: user.sid,
-                    }))
-                }
-                None => Err(Error::Authenticate(AuthenticateError::NoResource)),
-            },
-        }
-    } else {
-        Err(Error::Authenticate(AuthenticateError::ActionForbidden))
+            None => Err(Error::Authenticate(AuthenticateError::NoResource)),
+        },
     }
 }
 
@@ -306,129 +179,91 @@ pub async fn logout_my_all_sessions(
 }
 
 pub async fn logout_all(
-    user: JwtUser,
+    api_user: ApiUser,
     Extension(state): Extension<Arc<AppState>>,
-    Path((realm_id, client_id)): Path<(Uuid, Uuid)>,
+    Path((_, client_id)): Path<(Uuid, Uuid)>,
     Json(payload): Json<LogoutRequest>,
 ) -> Result<Json<LogoutResponse>, Error> {
-    if is_master_realm_admin(&user) || is_current_realm_admin(&user, &realm_id.to_string()) {
-        match payload.access_token {
-            Some(access_token) => {
-                let sub = decode(&access_token, &SETTINGS.read().secrets.signing_key)
+    if !api_user.has_access(ApiUserScope::Client, ApiUserAccess::Write) {
+        debug!("No allowed access");
+        return Err(Error::Authenticate(AuthenticateError::ActionForbidden));
+    }
+
+    match payload.access_token {
+        Some(access_token) => {
+            let claims = decode(&access_token, &SETTINGS.read().secrets.signing_key)
+                .map_err(|_| AuthenticateError::InvalidToken)?
+                .claims;
+
+            let result = session::Entity::delete_many()
+                .filter(session::Column::ClientId.eq(client_id))
+                .filter(session::Column::UserId.eq(claims.sub))
+                .exec(&state.db)
+                .await?;
+            Ok(Json(LogoutResponse {
+                ok: result.rows_affected > 0,
+                user_id: claims.sub,
+                session_id: claims.sid,
+            }))
+        }
+        None => match payload.refresh_token {
+            Some(refresh_token) => {
+                let claims = decode(&refresh_token, &SETTINGS.read().secrets.signing_key)
                     .map_err(|_| AuthenticateError::InvalidToken)?
-                    .claims
-                    .sub;
+                    .claims;
                 let result = session::Entity::delete_many()
                     .filter(session::Column::ClientId.eq(client_id))
-                    .filter(session::Column::UserId.eq(sub))
+                    .filter(session::Column::UserId.eq(claims.sub))
                     .exec(&state.db)
                     .await?;
                 Ok(Json(LogoutResponse {
                     ok: result.rows_affected > 0,
-                    user_id: user.sub,
-                    session_id: user.sid,
+                    user_id: claims.sub,
+                    session_id: claims.sid,
                 }))
             }
-            None => match payload.refresh_token {
-                Some(refresh_token) => {
-                    let sub = decode(&refresh_token, &SETTINGS.read().secrets.signing_key)
-                        .map_err(|_| AuthenticateError::InvalidToken)?
-                        .claims
-                        .sub;
-                    let result = session::Entity::delete_many()
-                        .filter(session::Column::ClientId.eq(client_id))
-                        .filter(session::Column::UserId.eq(sub))
-                        .exec(&state.db)
-                        .await?;
-                    Ok(Json(LogoutResponse {
-                        ok: result.rows_affected > 0,
-                        user_id: user.sub,
-                        session_id: user.sid,
-                    }))
-                }
-                None => Err(Error::Authenticate(AuthenticateError::NoResource)),
-            },
-        }
-    } else {
-        Err(Error::Authenticate(AuthenticateError::ActionForbidden))
+            None => Err(Error::Authenticate(AuthenticateError::NoResource)),
+        },
     }
 }
 
 pub async fn introspect(
-    user: JwtUser,
+    api_user: ApiUser,
     Extension(state): Extension<Arc<AppState>>,
     Path((realm_id, client_id)): Path<(Uuid, Uuid)>,
     Json(payload): Json<IntrospectRequest>,
 ) -> Result<Json<IntrospectResponse>, Error> {
-    if is_master_realm_admin(&user) || is_current_realm_admin(&user, &realm_id.to_string()) {
-        let token_data = decode(&payload.access_token, &SETTINGS.read().secrets.signing_key).expect("Failed to decode token");
-
-        if token_data.claims.resource.is_none() || token_data.claims.resource.is_some() && token_data.claims.resource.unwrap().client_id != client_id
-        {
-            return Err(Error::Authenticate(AuthenticateError::NoResource));
-        }
-
-        let session = session::Entity::find_by_id(token_data.claims.sid).one(&state.db).await?;
-        match session {
-            Some(session) => {
-                let user = user::Entity::find_by_id(session.user_id)
-                    .filter(user::Column::LockedAt.is_null())
-                    .one(&state.db)
-                    .await?;
-
-                match user {
-                    Some(user) => {
-                        let client = client::Entity::find_by_id(session.client_id)
-                            .filter(client::Column::LockedAt.is_null())
-                            .one(&state.db)
-                            .await?;
-
-                        match client {
-                            Some(client) => {
-                                let resource_group = resource_group::Entity::find()
-                                    .filter(resource_group::Column::RealmId.eq(realm_id))
-                                    .filter(resource_group::Column::ClientId.eq(client.id))
-                                    .filter(resource_group::Column::UserId.eq(user.id))
-                                    .filter(resource_group::Column::LockedAt.is_null())
-                                    .one(&state.db)
-                                    .await?;
-
-                                match resource_group {
-                                    Some(resource_group) => {
-                                        let resources = resource::Entity::find()
-                                            .filter(resource::Column::GroupId.eq(resource_group.id))
-                                            .filter(resource::Column::LockedAt.is_null())
-                                            .all(&state.db)
-                                            .await?;
-                                        Ok(Json(IntrospectResponse {
-                                            active: true,
-                                            client_id: client.id,
-                                            first_name: user.first_name.to_string(),
-                                            last_name: Some(user.last_name.unwrap_or("".to_string())),
-                                            sub: user.id,
-                                            token_type: "bearer".to_string(),
-                                            exp: token_data.claims.exp,
-                                            iat: token_data.claims.iat,
-                                            iss: SETTINGS.read().server.host.clone(),
-                                            client_name: client.name,
-                                            resource_group: resource_group.name,
-                                            resources: resources.iter().map(|r| r.name.clone()).collect::<Vec<String>>(),
-                                        }))
-                                    }
-                                    None => Err(Error::Authenticate(AuthenticateError::NoResource))?,
-                                }
-                            }
-                            None => Err(Error::Authenticate(AuthenticateError::NoResource)),
-                        }
-                    }
-                    None => Err(Error::Authenticate(AuthenticateError::NoResource)),
-                }
-            }
-            None => Err(Error::Authenticate(AuthenticateError::NoResource)),
-        }
-    } else {
-        Err(Error::Authenticate(AuthenticateError::ActionForbidden))
+    if !api_user.has_access(ApiUserScope::Client, ApiUserAccess::Read) {
+        debug!("No allowed access");
+        return Err(Error::Authenticate(AuthenticateError::ActionForbidden));
     }
+
+    let token_data = decode(&payload.access_token, &SETTINGS.read().secrets.signing_key)?;
+
+    if token_data.claims.resource.is_none() || token_data.claims.resource.is_some() && token_data.claims.resource.unwrap().client_id != client_id {
+        return Err(Error::Authenticate(AuthenticateError::ActionForbidden));
+    }
+
+    let session = get_active_session_by_id(&state.db, token_data.claims.sid).await?;
+    let user = get_active_user_by_id(&state.db, session.user_id).await?;
+    let client = get_active_client_by_id(&state.db, session.client_id).await?;
+    let resource_group = get_active_resource_group_by_rcu(&state.db, realm_id, session.client_id, session.user_id).await?;
+    let resources = get_active_resource_by_gu(&state.db, resource_group.id, session.user_id).await?;
+
+    Ok(Json(IntrospectResponse {
+        active: true,
+        client_id: client.id,
+        first_name: user.first_name.to_string(),
+        last_name: Some(user.last_name.unwrap_or("".to_string())),
+        sub: user.id,
+        token_type: "bearer".to_string(),
+        exp: token_data.claims.exp,
+        iat: token_data.claims.iat,
+        iss: SETTINGS.read().server.host.clone(),
+        client_name: client.name,
+        resource_group: resource_group.name,
+        resources: resources.iter().map(|r| r.name.clone()).collect::<Vec<String>>(),
+    }))
 }
 
 pub async fn refresh_token(
@@ -438,58 +273,20 @@ pub async fn refresh_token(
     Path((realm_id, client_id)): Path<(Uuid, Uuid)>,
     Json(payload): Json<RefreshTokenRequest>,
 ) -> Result<Json<RefreshTokenResponse>, Error> {
-    if !has_access_to_api_cred(&user, ApiUserRole::ClientAdmin, ApiUserAccess::Admin).await {
+    if !has_access_to_api_cred(&user, ApiUserScope::Client, ApiUserAccess::Write).await {
         debug!("No allowed access");
         return Err(Error::Authenticate(AuthenticateError::ActionForbidden));
     }
 
-    let token_data = decode_refresh_token(&payload.refresh_token, &SETTINGS.read().secrets.signing_key).expect("Failed to decode token");
+    let token_data = verify_and_decode_jwt::<RefreshTokenClaims>(&payload.refresh_token, &SETTINGS.read().secrets.signing_key, None)?;
     if token_data.claims.rli != realm_id || token_data.claims.cli != client_id {
-        return Err(Error::Authenticate(AuthenticateError::InvalidToken));
+        return Err(Error::Authenticate(AuthenticateError::ActionForbidden));
     }
 
-    let refresh_token = refresh_token::Entity::find_active_by_id(&state.db, token_data.claims.sub).await?;
-    if refresh_token.is_none() {
-        return Err(Error::not_found());
-    }
-    let client = client::Entity::find_active_by_id(&state.db, token_data.claims.cli).await?;
-    if client.is_none() {
-        return Err(Error::Authenticate(AuthenticateError::InvalidToken));
-    }
-
-    let refresh_token = refresh_token.unwrap();
-    let client = client.unwrap();
-
-    // Fetch user and resource groups
-    let user_with_resource_groups = user::Entity::find()
-        .filter(user::Column::Id.eq(refresh_token.user_id))
-        .find_also_related(resource_group::Entity)
-        .filter(resource_group::Column::RealmId.eq(client.realm_id))
-        .filter(resource_group::Column::ClientId.eq(client.id))
-        .one(&state.db)
-        .await?;
-
-    if user_with_resource_groups.is_none() {
-        debug!("No matching data found");
-        return Err(Error::not_found());
-    }
-
-    let (user, resource_groups) = user_with_resource_groups.unwrap();
-    if user.locked_at.is_some() {
-        debug!("User is locked");
-        return Err(Error::Authenticate(AuthenticateError::Locked));
-    }
-
-    if resource_groups.is_none() {
-        debug!("No matching resource group found");
-        return Err(Error::not_found());
-    }
-
-    let resource_groups = resource_groups.unwrap();
-    if resource_groups.locked_at.is_some() {
-        debug!("Resource group is locked");
-        return Err(Error::Authenticate(AuthenticateError::Locked));
-    }
+    let refresh_token = get_active_refresh_token_by_id(&state.db, token_data.claims.sub).await?;
+    let client = get_active_client_by_id(&state.db, token_data.claims.cli).await?;
+    let (user, resource_groups) =
+        get_active_user_and_resource_groups(&state.db, Either::E2(refresh_token.user_id), client.realm_id, client.id).await?;
 
     debug!("Before transaction calls");
     Ok(state

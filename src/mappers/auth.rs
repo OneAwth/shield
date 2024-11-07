@@ -1,6 +1,24 @@
+use entity::user;
 use sea_orm::prelude::Uuid;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+
+#[derive(Deserialize)]
+pub struct Credentials {
+    pub email: String,
+    pub password: String,
+}
+
+#[derive(Serialize)]
+pub struct LoginResponse {
+    pub access_token: String,
+    pub user: user::Model,
+    pub session_id: Uuid,
+    pub realm_id: Uuid,
+    pub client_id: Uuid,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub refresh_token: Option<String>,
+}
 
 #[derive(Deserialize)]
 pub struct ResourceSubset {

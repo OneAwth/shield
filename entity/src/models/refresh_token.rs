@@ -12,6 +12,7 @@ pub struct Model {
     pub client_id: Option<Uuid>,
     pub realm_id: Uuid,
     pub re_used_count: i32,
+    pub expires: DateTimeWithTimeZone,
     pub locked_at: Option<DateTimeWithTimeZone>,
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: DateTimeWithTimeZone,
@@ -70,5 +71,3 @@ impl Related<super::user::Entity> for Entity {
         Relation::User.def()
     }
 }
-
-impl ActiveModelBehavior for ActiveModel {}

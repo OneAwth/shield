@@ -1,5 +1,4 @@
 use super::m20220101_000002_create_client_table::Client;
-use super::m20220101_000003_create_user_table::User;
 use crate::m20220101_000001_create_realm_table::Realm;
 use sea_orm::sqlx::types::chrono;
 use sea_orm::{ActiveEnum, DbBackend, DeriveActiveEnum, EnumIter, Schema};
@@ -12,7 +11,7 @@ pub struct Migration;
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         let schema = Schema::new(DbBackend::Postgres);
-        manager.create_type(schema.create_enum_from_active_enum::<ApiUserRole>()).await?;
+        manager.create_type(schema.create_enum_from_active_enum::<ApiUserScope>()).await?;
         manager.create_type(schema.create_enum_from_active_enum::<ApiUserAccess>()).await?;
         manager
             .create_table(
@@ -20,7 +19,6 @@ impl MigrationTrait for Migration {
                     .table(ApiUser::Table)
                     .if_not_exists()
                     .col(ColumnDef::new(ApiUser::Id).uuid().not_null().primary_key())
-                    .col(ColumnDef::new(ApiUser::Secret).string().not_null())
                     .col(ColumnDef::new(ApiUser::Name).string().not_null())
                     .col(ColumnDef::new(ApiUser::Description).string())
                     .col(ColumnDef::new(ApiUser::RealmId).uuid().not_null())
@@ -39,24 +37,8 @@ impl MigrationTrait for Migration {
                             .to(Client::Table, Client::Id)
                             .on_delete(ForeignKeyAction::Cascade),
                     )
-                    .col(ColumnDef::new(ApiUser::Role).custom(ApiUserRole::name()).not_null())
+                    .col(ColumnDef::new(ApiUser::Role).custom(ApiUserScope::name()).not_null())
                     .col(ColumnDef::new(ApiUser::Access).custom(ApiUserAccess::name()).not_null())
-                    .col(ColumnDef::new(ApiUser::CreatedBy).uuid().not_null())
-                    .foreign_key(
-                        ForeignKey::create()
-                            .name("fk_api_user_created_by")
-                            .from(ApiUser::Table, ApiUser::CreatedBy)
-                            .to(User::Table, User::Id)
-                            .on_delete(ForeignKeyAction::Cascade),
-                    )
-                    .col(ColumnDef::new(ApiUser::UpdatedBy).uuid().not_null())
-                    .foreign_key(
-                        ForeignKey::create()
-                            .name("fk_api_user_updated_by")
-                            .from(ApiUser::Table, ApiUser::UpdatedBy)
-                            .to(User::Table, User::Id)
-                            .on_delete(ForeignKeyAction::Cascade),
-                    )
                     .col(ColumnDef::new(ApiUser::Expires).timestamp_with_time_zone().not_null())
                     .col(ColumnDef::new(ApiUser::LockedAt).timestamp_with_time_zone())
                     .col(
@@ -90,12 +72,12 @@ impl MigrationTrait for Migration {
 }
 
 #[derive(EnumIter, DeriveActiveEnum)]
-#[sea_orm(rs_type = "String", db_type = "Enum", enum_name = "api_user_role")]
-pub enum ApiUserRole {
-    #[sea_orm(string_value = "realm_admin")]
-    RealmAdmin,
-    #[sea_orm(string_value = "client_admin")]
-    ClientAdmin,
+#[sea_orm(rs_type = "String", db_type = "Enum", enum_name = "api_user_scope")]
+pub enum ApiUserScope {
+    #[sea_orm(string_value = "realm")]
+    Realm,
+    #[sea_orm(string_value = "client")]
+    Client,
 }
 
 #[derive(EnumIter, DeriveActiveEnum, PartialEq, Eq)]
@@ -105,6 +87,8 @@ pub enum ApiUserAccess {
     Read,
     #[sea_orm(string_value = "write")]
     Write,
+    #[sea_orm(string_value = "update")]
+    Update,
     #[sea_orm(string_value = "delete")]
     Delete,
     #[sea_orm(string_value = "admin")]
@@ -115,7 +99,6 @@ pub enum ApiUserAccess {
 pub enum ApiUser {
     Table,
     Id,
-    Secret,
     Name,
     Description,
     RealmId,
@@ -124,8 +107,6 @@ pub enum ApiUser {
     Access,
     Expires,
     LockedAt,
-    CreatedBy,
-    UpdatedBy,
     CreatedAt,
     UpdatedAt,
 }
