@@ -33,37 +33,6 @@ use crate::{
 use axum::{extract::Path, Extension, Json};
 use tracing::debug;
 
-pub async fn admin_login(
-    api_user: ApiUser,
-    Extension(state): Extension<Arc<AppState>>,
-    Extension(session_info): Extension<Arc<SessionInfo>>,
-    Path((realm_id, client_id)): Path<(Uuid, Uuid)>,
-    Json(payload): Json<Credentials>,
-) -> Result<Json<LoginResponse>, Error> {
-    debug!("🚀 Admin login request received! {:#?}", session_info);
-    if !api_user.has_access(ApiUserScope::Client, ApiUserAccess::Admin) {
-        debug!("No allowed access");
-        return Err(Error::Authenticate(AuthenticateError::ActionForbidden));
-    }
-
-    let (user, resource_groups) = get_active_user_and_resource_groups(&state.db, Either::E1(payload.email), realm_id, client_id).await?;
-    if !user.verify_password(&payload.password) {
-        debug!("Wrong password");
-        return Err(Error::Authenticate(AuthenticateError::WrongCredentials));
-    }
-
-    let client = get_active_client_by_id(&state.db, client_id).await?;
-    let sessions = get_active_sessions_by_user_and_client_id(&state.db, user.id, client.id).await?;
-
-    if sessions.len() >= client.max_concurrent_sessions as usize {
-        debug!("Client has reached max concurrent sessions");
-        return Err(Error::Authenticate(AuthenticateError::MaxConcurrentSessions));
-    }
-
-    let login_response = create_session_and_refresh_token(state, user, client, resource_groups, session_info).await?;
-    Ok(Json(login_response))
-}
-
 pub async fn login(
     api_user: ApiUser,
     Extension(state): Extension<Arc<AppState>>,
