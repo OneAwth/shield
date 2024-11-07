@@ -11,11 +11,10 @@ use crate::{
         settings::SETTINGS,
     },
 };
-use chrono;
+use chrono::{self, Duration, Utc};
 use entity::{client, refresh_token, resource, resource_group, session, user};
 use sea_orm::{
-    prelude::Uuid, ActiveModelTrait, ColumnTrait, DatabaseConnection, DatabaseTransaction, DbErr, EntityTrait, PaginatorTrait, QueryFilter, Set,
-    TransactionTrait,
+    prelude::Uuid, ActiveModelTrait, ColumnTrait, DatabaseConnection, DatabaseTransaction, DbErr, EntityTrait, QueryFilter, Set, TransactionTrait,
 };
 use tracing::debug;
 
@@ -33,6 +32,7 @@ pub async fn handle_refresh_token(
             realm_id: Set(client.realm_id),
             re_used_count: Set(0),
             locked_at: Set(None),
+            expires: Set((Utc::now() + Duration::seconds(client.refresh_token_lifetime as i64)).into()),
             ..Default::default()
         };
         model.insert(txn).await?
@@ -44,6 +44,7 @@ pub async fn handle_refresh_token(
             realm_id: Set(refresh_token.realm_id),
             re_used_count: Set(refresh_token.re_used_count + 1),
             locked_at: Set(None),
+            expires: Set((Utc::now() + Duration::seconds(client.refresh_token_lifetime as i64)).into()),
             ..Default::default()
         };
         model.update(txn).await?
@@ -96,6 +97,7 @@ pub async fn create_session_and_refresh_token(
                             client_id: Set(Some(client.id)),
                             realm_id: Set(client.realm_id),
                             re_used_count: Set(0),
+                            expires: Set((Utc::now() + Duration::seconds(client.refresh_token_lifetime as i64)).into()),
                             locked_at: Set(None),
                             ..Default::default()
                         };
@@ -146,18 +148,6 @@ pub async fn create_session(
     refresh_token_id: Option<Uuid>,
     db: &DatabaseTransaction,
 ) -> Result<LoginResponse, Error> {
-    let sessions = session::Entity::find()
-        .filter(session::Column::ClientId.eq(client.id))
-        .filter(session::Column::UserId.eq(user.id))
-        .filter(session::Column::Expires.gt(chrono::Utc::now()))
-        .count(db)
-        .await?;
-
-    if sessions >= client.max_concurrent_sessions as u64 {
-        debug!("Client has reached max concurrent sessions");
-        return Err(Error::Authenticate(AuthenticateError::MaxConcurrentSessions));
-    }
-
     // Fetch resources
     let resources = resource::Entity::find()
         .filter(resource::Column::GroupId.eq(resource_groups.id))
@@ -165,6 +155,7 @@ pub async fn create_session(
         .all(db)
         .await?;
 
+    // TODO: if resource_groups_id is Some and resources are empty then return error else continue
     if resources.is_empty() {
         debug!("No resources found");
         return Err(Error::Authenticate(AuthenticateError::Locked));

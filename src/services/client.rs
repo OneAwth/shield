@@ -1,4 +1,5 @@
 use chrono::Utc;
+use entity::client;
 use sea_orm::{prelude::Uuid, ActiveModelTrait, ColumnTrait, DatabaseConnection, DeleteResult, EntityTrait, QueryFilter, Set};
 use tracing::debug;
 
@@ -7,32 +8,44 @@ use crate::{
     packages::errors::{AuthenticateError, Error, NotFoundError},
     utils::default_resource_checker::is_default_client,
 };
-use entity::client;
 
 pub async fn get_all_clients(db: &DatabaseConnection, realm_id: Uuid) -> Result<Vec<client::Model>, Error> {
     Ok(client::Entity::find().filter(client::Column::RealmId.eq(realm_id)).all(db).await?)
+}
+
+pub async fn get_client_by_id_and_realm_id(db: &DatabaseConnection, realm_id: Uuid, client_id: Uuid) -> Result<Option<client::Model>, Error> {
+    Ok(client::Entity::find()
+        .filter(client::Column::RealmId.eq(realm_id))
+        .filter(client::Column::Id.eq(client_id))
+        .one(db)
+        .await?)
 }
 
 pub async fn get_client_by_id(db: &DatabaseConnection, client_id: Uuid) -> Result<Option<client::Model>, Error> {
     Ok(client::Entity::find_by_id(client_id).one(db).await?)
 }
 
-pub async fn insert_client(db: &DatabaseConnection, payload: CreateClientRequest) -> Result<client::Model, Error> {
+pub async fn insert_client(db: &DatabaseConnection, realm_id: Uuid, payload: CreateClientRequest) -> Result<client::Model, Error> {
     let client = client::ActiveModel {
         id: Set(Uuid::now_v7()),
         name: Set(payload.name.to_owned()),
-        realm_id: Set(payload.realm_id),
+        realm_id: Set(realm_id),
         ..Default::default()
     };
     Ok(client.insert(db).await?)
 }
 
-pub async fn update_client_by_id(db: &DatabaseConnection, client_id: Uuid, payload: UpdateClientRequest) -> Result<client::Model, Error> {
+pub async fn update_client_by_id(
+    db: &DatabaseConnection,
+    realm_id: Uuid,
+    client_id: Uuid,
+    payload: UpdateClientRequest,
+) -> Result<client::Model, Error> {
     if is_default_client(client_id) && payload.lock == Some(true) {
         return Err(Error::cannot_perform_operation("Cannot lock the default client"));
     }
 
-    let client = get_client_by_id(db, client_id).await?;
+    let client = get_client_by_id_and_realm_id(db, realm_id, client_id).await?;
     match client {
         Some(client) => {
             let locked_at = match payload.lock {
@@ -74,8 +87,12 @@ pub async fn update_client_by_id(db: &DatabaseConnection, client_id: Uuid, paylo
     }
 }
 
-pub async fn delete_client_by_id(db: &DatabaseConnection, id: Uuid) -> Result<DeleteResult, Error> {
-    Ok(client::Entity::delete_by_id(id).exec(db).await?)
+pub async fn delete_client_by_id(db: &DatabaseConnection, realm_id: Uuid, id: Uuid) -> Result<DeleteResult, Error> {
+    Ok(client::Entity::delete_many()
+        .filter(client::Column::RealmId.eq(realm_id))
+        .filter(client::Column::Id.eq(id))
+        .exec(db)
+        .await?)
 }
 
 pub async fn get_active_client_by_id(db: &DatabaseConnection, client_id: Uuid) -> Result<client::Model, Error> {

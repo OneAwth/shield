@@ -20,6 +20,7 @@ impl MigrationTrait for Migration {
                     .col(ColumnDef::new(RefreshToken::ClientId).uuid())
                     .col(ColumnDef::new(RefreshToken::RealmId).uuid().not_null())
                     .col(ColumnDef::new(RefreshToken::ReUsedCount).integer().not_null().default(0))
+                    .col(ColumnDef::new(RefreshToken::Expires).timestamp_with_time_zone().not_null())
                     .col(ColumnDef::new(RefreshToken::LockedAt).timestamp_with_time_zone())
                     .col(
                         ColumnDef::new(RefreshToken::CreatedAt)
@@ -118,6 +119,7 @@ pub enum RefreshToken {
     RealmId,
     ReUsedCount,
     LockedAt,
+    Expires,
     CreatedAt,
     UpdatedAt,
 }

@@ -18,17 +18,15 @@ use crate::{
         api_token::ApiUser,
         db::AppState,
         errors::{AuthenticateError, Error},
-        jwt_token::JwtUser,
     },
-    utils::role_checker::{is_current_realm_admin, is_master_realm_admin},
 };
 
 pub async fn get_api_users(
-    user: JwtUser,
+    api_user: ApiUser,
     Extension(state): Extension<Arc<AppState>>,
     Path((realm_id, client_id)): Path<(Uuid, Uuid)>,
 ) -> Result<Json<Vec<api_user::Model>>, Error> {
-    if !is_master_realm_admin(&user) && !is_current_realm_admin(&user, &realm_id.to_string()) {
+    if !api_user.is_master_realm_admin() {
         return Err(Error::Authenticate(AuthenticateError::NoResource));
     }
 
@@ -41,12 +39,12 @@ pub async fn get_api_users(
 }
 
 pub async fn create_api_user(
-    user: ApiUser,
+    api_user: ApiUser,
     Extension(state): Extension<Arc<AppState>>,
     Path((realm_id, client_id)): Path<(Uuid, Uuid)>,
     Json(payload): Json<CreateApiUserRequest>,
 ) -> Result<Json<CreateApiUserResponse>, Error> {
-    if !user.has_access(ApiUserRole::ClientAdmin, ApiUserAccess::Admin) {
+    if !api_user.has_access(payload.role.clone(), ApiUserAccess::Admin) {
         return Err(Error::Authenticate(AuthenticateError::NoResource));
     }
 
@@ -67,13 +65,13 @@ pub async fn create_api_user(
 }
 
 pub async fn update_api_user(
-    user: JwtUser,
+    api_user: ApiUser,
     Extension(state): Extension<Arc<AppState>>,
-    Path((realm_id, _client_id, api_user_id)): Path<(Uuid, Uuid, Uuid)>,
+    Path((_realm_id, _client_id, api_user_id)): Path<(Uuid, Uuid, Uuid)>,
     Json(payload): Json<UpdateApiUserRequest>,
 ) -> Result<Json<UpdateApiUserResponse>, Error> {
-    if !is_master_realm_admin(&user) && !is_current_realm_admin(&user, &realm_id.to_string()) {
-        return Err(Error::Authenticate(AuthenticateError::NoResource));
+    if !api_user.is_master_realm_admin() {
+        return Err(Error::Authenticate(AuthenticateError::ActionForbidden));
     }
 
     let api_user = api_user::Entity::find_by_id(api_user_id).one(&state.db).await?;
@@ -119,12 +117,12 @@ pub async fn update_api_user(
 }
 
 pub async fn delete_api_user(
-    user: JwtUser,
+    api_user: ApiUser,
     Extension(state): Extension<Arc<AppState>>,
-    Path((realm_id, _client_id, api_user_id)): Path<(Uuid, Uuid, Uuid)>,
+    Path((_realm_id, _client_id, api_user_id)): Path<(Uuid, Uuid, Uuid)>,
 ) -> Result<Json<DeleteResponse>, Error> {
-    if !is_master_realm_admin(&user) && !is_current_realm_admin(&user, &realm_id.to_string()) {
-        return Err(Error::Authenticate(AuthenticateError::NoResource));
+    if !api_user.has_access(ApiUserRole::RealmAdmin, ApiUserAccess::Admin) {
+        return Err(Error::Authenticate(AuthenticateError::ActionForbidden));
     }
 
     let delete_result = api_user::Entity::delete_by_id(api_user_id).exec(&state.db).await?;

@@ -102,6 +102,10 @@ impl ApiUser {
         }
         false
     }
+
+    pub fn is_master_realm_admin(&self) -> bool {
+        self.realm_id == SETTINGS.read().default_cred.realm_id
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]

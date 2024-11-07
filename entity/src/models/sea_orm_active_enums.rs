@@ -13,6 +13,8 @@ pub enum ApiUserAccess {
     Delete,
     #[sea_orm(string_value = "read")]
     Read,
+    #[sea_orm(string_value = "update")]
+    Update,
     #[sea_orm(string_value = "write")]
     Write,
 }
