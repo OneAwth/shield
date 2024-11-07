@@ -5,7 +5,7 @@ use sea_orm::{entity::prelude::*, sqlx::types::chrono::Utc, ActiveValue};
 #[async_trait]
 impl ActiveModelBehavior for refresh_token::ActiveModel {
     /// Will be triggered before insert / update
-    async fn before_save<C>(mut self, _db: &C, _insert: bool) -> Result<Self, DbErr>
+    async fn before_save<C>(mut self, db: &C, _insert: bool) -> Result<Self, DbErr>
     where
         C: ConnectionTrait,
     {
@@ -18,6 +18,11 @@ impl ActiveModelBehavior for refresh_token::ActiveModel {
                 return Err(DbErr::Custom("Expires must be greater than created_at".to_owned()));
             }
         }
+
+        refresh_token::Entity::delete_many()
+            .filter(refresh_token::Column::Expires.lt(Utc::now()))
+            .exec(db)
+            .await?;
 
         Ok(self)
     }
