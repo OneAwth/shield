@@ -1,13 +1,12 @@
 use axum::{middleware, routing::post, Router};
 
 use crate::{
-    handlers::auth::{admin_login, introspect, login, logout, logout_all, logout_current_session, logout_my_all_sessions, refresh_token, register},
+    handlers::auth::{introspect, login, logout, logout_all, logout_current_session, logout_my_all_sessions, refresh_token, register},
     middleware::session_info_extractor::session_info_middleware,
 };
 
 pub fn create_routes() -> Router {
     Router::new()
-        .route("/admin-login", post(admin_login))
         .route("/login", post(login))
         .route("/logout", post(logout))
         .route("/logout-current-session", post(logout_current_session))
