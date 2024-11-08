@@ -1,10 +1,11 @@
-version: '3.8'
+version: "3.8"
 
 services:
   shield:
     build: .
+    container_name: shield
     ports:
-      - "5555:5555"  # Adjust the port as needed
+      - "5555:5555" # Adjust the port as needed
     depends_on:
       db:
         condition: service_healthy
@@ -21,6 +22,7 @@ services:
 
   db:
     image: postgres:17
+    container_name: shield-db
     volumes:
       - postgres_data:/var/lib/postgresql/data
     environment:
