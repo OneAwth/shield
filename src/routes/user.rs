@@ -4,12 +4,12 @@ use axum::{
 };
 
 use crate::handlers::user::{
-    add_resources, delete_resource, delete_resource_group, delete_user, get_resource_group, get_resource_groups, get_resources, get_user, get_users,
-    update_resource, update_resource_group,
+    add_resources, create_user, delete_resource, delete_resource_group, delete_user, get_resource_group, get_resource_groups, get_resources,
+    get_user, get_users, update_resource, update_resource_group,
 };
 
 pub fn create_routes() -> Router {
-    Router::new().route("/", get(get_users)).nest(
+    Router::new().route("/", get(get_users).post(create_user)).nest(
         "/:user_id",
         Router::new()
             .route("/", get(get_user).delete(delete_user))

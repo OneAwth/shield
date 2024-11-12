@@ -1,11 +1,14 @@
 use std::sync::Arc;
 
-use crate::mappers::user::{AddResourceRequest, UpdateResourceGroupRequest, UpdateResourceRequest};
+use crate::mappers::user::{AddResourceRequest, CreateUserRequest, UpdateResourceGroupRequest, UpdateResourceRequest};
 use crate::mappers::DeleteResponse;
+use crate::packages::api_token::ApiUser;
+use crate::services::user::insert_user;
 use crate::utils::default_resource_checker::{is_default_resource, is_default_resource_group, is_default_user};
 use axum::extract::Path;
 use axum::{Extension, Json};
 use chrono::Utc;
+use entity::sea_orm_active_enums::{ApiUserAccess, ApiUserScope};
 use entity::{resource, resource_group, user};
 use futures::future::try_join_all;
 use sea_orm::prelude::Uuid;
@@ -19,6 +22,20 @@ use crate::{
     },
     utils::role_checker::{is_current_realm_admin, is_master_realm_admin},
 };
+
+pub async fn create_user(
+    api_user: ApiUser,
+    Extension(state): Extension<Arc<AppState>>,
+    Path(realm_id): Path<Uuid>,
+    Json(payload): Json<CreateUserRequest>,
+) -> Result<Json<user::Model>, Error> {
+    if api_user.has_access(ApiUserScope::Client, ApiUserAccess::Write) {
+        let user = insert_user(&state.db, realm_id, payload).await?;
+        Ok(Json(user))
+    } else {
+        Err(Error::Authenticate(AuthenticateError::ActionForbidden))
+    }
+}
 
 pub async fn get_users(
     user: JwtUser,

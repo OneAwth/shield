@@ -1,7 +1,7 @@
 use axum_extra::either::Either;
 use entity::{
     sea_orm_active_enums::{ApiUserAccess, ApiUserScope},
-    session, user,
+    session,
 };
 
 use sea_orm::{prelude::Uuid, ColumnTrait, EntityTrait, QueryFilter, TransactionTrait};
@@ -9,8 +9,7 @@ use std::sync::Arc;
 
 use crate::{
     mappers::auth::{
-        CreateUserRequest, Credentials, IntrospectRequest, IntrospectResponse, LoginResponse, LogoutRequest, LogoutResponse, RefreshTokenRequest,
-        RefreshTokenResponse,
+        Credentials, IntrospectRequest, IntrospectResponse, LoginResponse, LogoutRequest, LogoutResponse, RefreshTokenRequest, RefreshTokenResponse,
     },
     middleware::session_info_extractor::SessionInfo,
     packages::{
@@ -26,7 +25,7 @@ use crate::{
             get_active_resource_group_by_rcu, get_active_session_by_id, get_active_sessions_by_user_and_client_id, handle_refresh_token,
         },
         client::get_active_client_by_id,
-        user::{get_active_user_and_resource_groups, get_active_user_by_id, insert_user},
+        user::{get_active_user_and_resource_groups, get_active_user_by_id},
     },
     utils::role_checker::has_access_to_api_cred,
 };
@@ -63,20 +62,6 @@ pub async fn login(
 
     let login_response = create_session_and_refresh_token(state, user, client, resource_groups, session_info).await?;
     Ok(Json(login_response))
-}
-
-pub async fn register(
-    api_user: ApiUser,
-    Extension(state): Extension<Arc<AppState>>,
-    Path((realm_id, client_id)): Path<(Uuid, Uuid)>,
-    Json(payload): Json<CreateUserRequest>,
-) -> Result<Json<user::Model>, Error> {
-    if api_user.has_access(ApiUserScope::Client, ApiUserAccess::Write) {
-        let user = insert_user(&state.db, realm_id, client_id, payload).await?;
-        Ok(Json(user))
-    } else {
-        Err(Error::Authenticate(AuthenticateError::ActionForbidden))
-    }
 }
 
 pub async fn logout_current_session(user: JwtUser, Extension(state): Extension<Arc<AppState>>) -> Result<Json<LogoutResponse>, Error> {
