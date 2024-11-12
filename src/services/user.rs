@@ -1,15 +1,16 @@
 use crate::{
-    mappers::auth::CreateUserRequest,
+    mappers::user::CreateUserRequest,
     packages::errors::{AuthenticateError, Error, NotFoundError},
     utils::hash::generate_password_hash,
 };
 use axum_extra::either::Either;
 use entity::{resource, resource_group, user};
 use futures::future::join_all;
-use sea_orm::{prelude::Uuid, ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
+use sea_orm::{prelude::Uuid, ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set, TransactionTrait};
 use tracing::debug;
 
-pub async fn insert_user(db: &DatabaseConnection, realm_id: Uuid, client_id: Uuid, payload: CreateUserRequest) -> Result<user::Model, Error> {
+pub async fn insert_user(db: &DatabaseConnection, realm_id: Uuid, payload: CreateUserRequest) -> Result<user::Model, Error> {
+    let txn = db.begin().await?;
     let password_hash = generate_password_hash(payload.password).await?;
     let user_model = user::ActiveModel {
         id: Set(Uuid::now_v7()),
@@ -23,17 +24,17 @@ pub async fn insert_user(db: &DatabaseConnection, realm_id: Uuid, client_id: Uui
         ..Default::default()
     };
 
-    let user = user_model.insert(db).await?;
+    let user = user_model.insert(&txn).await?;
 
     let resource_group = resource_group::ActiveModel {
         id: Set(Uuid::now_v7()),
         realm_id: Set(user.realm_id),
-        client_id: Set(client_id),
+        client_id: Set(payload.resource.group.client_id),
         user_id: Set(user.id),
-        name: Set(payload.resource.group_name),
+        name: Set(payload.resource.group.name),
         ..Default::default()
     };
-    let resource_group = resource_group.insert(db).await?;
+    let resource_group = resource_group.insert(&txn).await?;
 
     let futures: Vec<_> = payload
         .resource
@@ -47,12 +48,12 @@ pub async fn insert_user(db: &DatabaseConnection, realm_id: Uuid, client_id: Uui
                 value: Set(value.to_string()),
                 ..Default::default()
             };
-            resource.insert(db)
+            resource.insert(&txn)
         })
         .collect();
 
     join_all(futures).await;
-
+    txn.commit().await?;
     Ok(user)
 }
 
