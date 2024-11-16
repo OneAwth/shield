@@ -6,6 +6,11 @@ server:
 database:
   uri: "postgres://postgres:1234@localhost:5432"
   name: shield
+smtp:
+  server: smtp.gmail.com
+  port: 587
+  username: <noreply@shield.rs>
+  password: <password>
 secrets:
   signing_key: 87cc20e216861442af1bc993ad6f274b61bb65b956444da50f446b2046c0d260 # NOTE: This key must be changed in production by providing SIGNING_KEY env variable
   api_key_signing_secret: 87cc20e216861442af1bc993ad6f274b61bb65b956444da50f446b2046c0d261 # NOTE: This key must be changed in production by providing API_KEY_SIGNING_SECRET env variable

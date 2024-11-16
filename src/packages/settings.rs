@@ -29,6 +29,14 @@ pub struct Database {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+pub struct Smtp {
+    pub server: String,
+    pub port: u16,
+    pub username: String,
+    pub password: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
 pub struct Admin {
     pub email: String,
     pub password: String,
@@ -46,6 +54,7 @@ pub struct Settings {
     pub server: Server,
     pub logger: Logger,
     pub database: Database,
+    pub smtp: Smtp,
     pub admin: Admin,
     pub secrets: Secrets,
     pub default_cred: DefaultCred,
@@ -90,6 +99,22 @@ impl Settings {
         }
         if let Ok(admin_password) = env::var("ADMIN_PASSWORD") {
             builder = builder.set_override("admin.password", admin_password)?;
+        }
+
+        // --------------------------------------------------------------------------------
+        //                                  SMTP SETTINGS
+        // --------------------------------------------------------------------------------
+        if let Ok(server) = env::var("SMTP_SERVER") {
+            builder = builder.set_override("smtp.server", server)?;
+        }
+        if let Ok(port) = env::var("SMTP_PORT") {
+            builder = builder.set_override("smtp.port", port)?;
+        }
+        if let Ok(username) = env::var("SMTP_USERNAME") {
+            builder = builder.set_override("smtp.username", username)?;
+        }
+        if let Ok(password) = env::var("SMTP_PASSWORD") {
+            builder = builder.set_override("smtp.password", password)?;
         }
 
         // "./logs/default_cred.json" exists then read it else skip

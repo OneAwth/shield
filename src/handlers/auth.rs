@@ -40,6 +40,7 @@ pub async fn login(
     Json(payload): Json<Credentials>,
 ) -> Result<Json<LoginResponse>, Error> {
     debug!("🚀 Login request received! {:#?}", session_info);
+
     if !api_user.has_access(ApiUserScope::Client, ApiUserAccess::Write) {
         debug!("No allowed access");
         return Err(Error::Authenticate(AuthenticateError::ActionForbidden));
