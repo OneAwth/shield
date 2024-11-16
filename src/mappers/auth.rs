@@ -1,4 +1,3 @@
-use entity::user;
 use sea_orm::prelude::Uuid;
 use serde::{Deserialize, Serialize};
 
