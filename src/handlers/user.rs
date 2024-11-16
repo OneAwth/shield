@@ -1,13 +1,14 @@
 use std::sync::Arc;
 
 use crate::mappers::user::{
-    AddResourceRequest, CreateUserRequest, SendEmailVerificationRequest, SendEmailVerificationResponse, UpdateResourceGroupRequest,
-    UpdateResourceRequest, VerifyEmailRequest, VerifyEmailResponse,
+    AddResourceRequest, CreateUserRequest, ForgotPasswordRequest, ForgotPasswordResponse, InitiateForgotPasswordResponse,
+    SendEmailVerificationRequest, SendEmailVerificationResponse, UpdateResourceGroupRequest, UpdateResourceRequest, VerifyEmailRequest,
+    VerifyEmailResponse,
 };
 use crate::mappers::DeleteResponse;
 use crate::packages::api_token::ApiUser;
 use crate::packages::mail::postman::send_welcome_email;
-use crate::services::user::{insert_user, send_email_verification_service, verify_user_email};
+use crate::services::user::{change_password, initiate_forgot_password_service, insert_user, send_email_verification_service, verify_user_email};
 use crate::utils::default_resource_checker::{is_default_resource, is_default_resource_group, is_default_user};
 use axum::extract::Path;
 use axum::{Extension, Form, Json};
@@ -383,4 +384,41 @@ pub async fn verify_email(
     }
 
     verify_user_email(&state.db, payload).await
+}
+
+pub async fn initiate_forgot_password(
+    user: ApiUser,
+    Extension(state): Extension<Arc<AppState>>,
+    Path((realm_id, user_id)): Path<(Uuid, Uuid)>,
+) -> Result<Json<InitiateForgotPasswordResponse>, Error> {
+    if !user.has_access(ApiUserScope::Client, ApiUserAccess::Write) {
+        debug!("No allowed access");
+        return Err(Error::Authenticate(AuthenticateError::ActionForbidden));
+    }
+
+    if user.realm_id != realm_id {
+        debug!("No allowed access");
+        return Err(Error::Authenticate(AuthenticateError::ActionForbidden));
+    }
+
+    initiate_forgot_password_service(&state.db, realm_id, user_id).await
+}
+
+pub async fn forgot_password(
+    user: ApiUser,
+    Extension(state): Extension<Arc<AppState>>,
+    Path((realm_id, user_id)): Path<(Uuid, Uuid)>,
+    Form(payload): Form<ForgotPasswordRequest>,
+) -> Result<Json<ForgotPasswordResponse>, Error> {
+    if !user.has_access(ApiUserScope::Client, ApiUserAccess::Write) {
+        debug!("No allowed access");
+        return Err(Error::Authenticate(AuthenticateError::ActionForbidden));
+    }
+
+    if user.realm_id != realm_id {
+        debug!("No allowed access");
+        return Err(Error::Authenticate(AuthenticateError::ActionForbidden));
+    }
+
+    change_password(&state.db, realm_id, user_id, payload).await
 }

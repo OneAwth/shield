@@ -124,7 +124,8 @@ pub async fn create_session_and_refresh_token(
 
                     Ok(LoginResponse {
                         realm_id: user.realm_id,
-                        user,
+                        user_id: user.id,
+                        expires_at: session.expires_at,
                         session_id: session.session_id,
                         client_id: client.id,
                         access_token: session.access_token,
@@ -190,7 +191,8 @@ pub async fn create_session(
     Ok(LoginResponse {
         access_token,
         realm_id: user.realm_id,
-        user: user.clone(),
+        user_id: user.id,
+        expires_at: session.expires.timestamp() as usize,
         session_id: session.id,
         client_id: client.id,
         refresh_token: None,

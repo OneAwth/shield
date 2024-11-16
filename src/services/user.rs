@@ -1,12 +1,20 @@
 use crate::{
-    mappers::user::{CreateUserRequest, SendEmailVerificationRequest, SendEmailVerificationResponse, VerifyEmailRequest, VerifyEmailResponse},
+    mappers::user::{
+        CreateUserRequest, ForgotPasswordRequest, ForgotPasswordResponse, InitiateForgotPasswordResponse, SendEmailVerificationRequest,
+        SendEmailVerificationResponse, VerifyEmailRequest, VerifyEmailResponse,
+    },
     packages::{
         errors::{AuthenticateError, Error, NotFoundError},
         mail::postman::send_verification_email,
     },
     utils::{
         hash::generate_password_hash,
-        jwt_helper::email::{create_email_verification_token, validate_email_token, CreateEmailVerificationTokenArgs, VerifyEmailTokenArgs},
+        jwt_helper::{
+            email::{create_email_verification_token, validate_email_token, CreateEmailVerificationTokenArgs, VerifyEmailTokenArgs},
+            forgot_password::{
+                create_forgot_password_token, validate_forgot_password_token, CreateForgotPasswordTokenArgs, VerifyForgotPasswordTokenArgs,
+            },
+        },
     },
 };
 use axum::Json;
@@ -192,4 +200,113 @@ pub async fn verify_user_email(db: &DatabaseConnection, data: VerifyEmailRequest
     verification::Entity::delete_by_id(token_data.claims.sub).exec(db).await?;
 
     Ok(Json(VerifyEmailResponse { ok: true }))
+}
+
+pub async fn initiate_forgot_password_service(
+    db: &DatabaseConnection,
+    realm_id: Uuid,
+    user_id: Uuid,
+) -> Result<Json<InitiateForgotPasswordResponse>, Error> {
+    let user = user::Entity::find_by_id(user_id).one(db).await?;
+    if user.is_none() {
+        return Err(Error::NotFound(NotFoundError::UserNotFound));
+    }
+
+    let user = user.unwrap();
+    if user.locked_at.is_some() {
+        return Err(Error::Authenticate(AuthenticateError::Locked));
+    }
+
+    if user.realm_id != realm_id {
+        return Err(Error::Authenticate(AuthenticateError::ActionForbidden));
+    }
+
+    let verification = verification::Entity::find()
+        .filter(verification::Column::UserId.eq(user.id))
+        .filter(verification::Column::Type.eq(VerificationType::ForgotPassword))
+        .one(db)
+        .await?;
+
+    let verification = match verification {
+        Some(verification) => {
+            let mut active_model: verification::ActiveModel = verification.into();
+            active_model.expires = Set((chrono::Utc::now() + chrono::Duration::seconds(60 * 60)).into());
+            active_model.update(db).await?
+        }
+        None => {
+            let model = verification::ActiveModel {
+                id: Set(Uuid::now_v7()),
+                user_id: Set(user.id),
+                r#type: Set(VerificationType::ForgotPassword),
+                expires: Set((chrono::Utc::now() + chrono::Duration::seconds(60 * 60)).into()),
+            };
+            model.insert(db).await?
+        }
+    };
+
+    let token = create_forgot_password_token(CreateForgotPasswordTokenArgs {
+        sub: verification.id,
+        exp: verification.expires.timestamp() as usize,
+        user_id: user.id,
+        ..Default::default()
+    })?;
+    Ok(Json(InitiateForgotPasswordResponse {
+        ok: true,
+        token,
+        expires_at: verification.expires.timestamp() as usize,
+    }))
+}
+
+pub async fn change_password(
+    db: &DatabaseConnection,
+    realm_id: Uuid,
+    user_id: Uuid,
+    payload: ForgotPasswordRequest,
+) -> Result<Json<ForgotPasswordResponse>, Error> {
+    let token_data = validate_forgot_password_token(VerifyForgotPasswordTokenArgs {
+        token: payload.token,
+        ..Default::default()
+    })?;
+
+    if token_data.claims.user_id != user_id {
+        return Err(Error::Authenticate(AuthenticateError::InvalidToken));
+    }
+
+    let user = user::Entity::find_by_id(user_id).one(db).await?;
+    if user.is_none() {
+        return Err(Error::NotFound(NotFoundError::UserNotFound));
+    }
+
+    let user = user.unwrap();
+    if user.locked_at.is_some() {
+        return Err(Error::Authenticate(AuthenticateError::Locked));
+    }
+
+    if user.realm_id != realm_id {
+        return Err(Error::Authenticate(AuthenticateError::ActionForbidden));
+    }
+
+    if payload.password != payload.password_confirmation {
+        return Err(Error::cannot_perform_operation("Passwords do not match"));
+    }
+
+    let verification_data = verification::Entity::find_by_id(token_data.claims.sub).one(db).await?;
+    if verification_data.is_none() {
+        return Err(Error::Authenticate(AuthenticateError::InvalidToken));
+    }
+
+    let verification_data = verification_data.unwrap();
+    if verification_data.expires.timestamp() <= chrono::Local::now().timestamp() {
+        return Err(Error::Authenticate(AuthenticateError::InvalidToken));
+    }
+
+    if verification_data.r#type != VerificationType::ForgotPassword {
+        return Err(Error::Authenticate(AuthenticateError::InvalidToken));
+    }
+
+    let mut user: user::ActiveModel = user.into();
+    user.password_hash = Set(Some(generate_password_hash(payload.password).await?));
+    user.update(db).await?;
+
+    Ok(Json(ForgotPasswordResponse { ok: true }))
 }

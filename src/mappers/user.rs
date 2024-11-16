@@ -68,3 +68,22 @@ pub struct VerifyEmailRequest {
 pub struct VerifyEmailResponse {
     pub ok: bool,
 }
+
+#[derive(Serialize)]
+pub struct InitiateForgotPasswordResponse {
+    pub ok: bool,
+    pub token: String,
+    pub expires_at: usize,
+}
+
+#[derive(Deserialize)]
+pub struct ForgotPasswordRequest {
+    pub password: String,
+    pub password_confirmation: String,
+    pub token: String,
+}
+
+#[derive(Serialize)]
+pub struct ForgotPasswordResponse {
+    pub ok: bool,
+}
