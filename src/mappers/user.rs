@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use sea_orm::prelude::Uuid;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize)]
 pub struct ResourceGroup {
@@ -47,4 +47,24 @@ pub struct UpdateResourceGroupRequest {
     pub description: Option<String>,
     pub is_default: Option<bool>,
     pub lock: Option<bool>,
+}
+
+#[derive(Deserialize)]
+pub struct SendEmailVerificationRequest {
+    pub user_id: Uuid,
+}
+
+#[derive(Serialize)]
+pub struct SendEmailVerificationResponse {
+    pub ok: bool,
+}
+
+#[derive(Deserialize)]
+pub struct VerifyEmailRequest {
+    pub token: String,
+}
+
+#[derive(Serialize)]
+pub struct VerifyEmailResponse {
+    pub ok: bool,
 }

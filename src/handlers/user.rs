@@ -1,18 +1,23 @@
 use std::sync::Arc;
 
-use crate::mappers::user::{AddResourceRequest, CreateUserRequest, UpdateResourceGroupRequest, UpdateResourceRequest};
+use crate::mappers::user::{
+    AddResourceRequest, CreateUserRequest, SendEmailVerificationRequest, SendEmailVerificationResponse, UpdateResourceGroupRequest,
+    UpdateResourceRequest, VerifyEmailRequest, VerifyEmailResponse,
+};
 use crate::mappers::DeleteResponse;
 use crate::packages::api_token::ApiUser;
-use crate::services::user::insert_user;
+use crate::packages::mail::postman::send_welcome_email;
+use crate::services::user::{insert_user, send_email_verification_service, verify_user_email};
 use crate::utils::default_resource_checker::{is_default_resource, is_default_resource_group, is_default_user};
 use axum::extract::Path;
-use axum::{Extension, Json};
+use axum::{Extension, Form, Json};
 use chrono::Utc;
 use entity::sea_orm_active_enums::{ApiUserAccess, ApiUserScope};
 use entity::{resource, resource_group, user};
 use futures::future::try_join_all;
 use sea_orm::prelude::Uuid;
 use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
+use tracing::debug;
 
 use crate::packages::db::AppState;
 use crate::{
@@ -31,6 +36,9 @@ pub async fn create_user(
 ) -> Result<Json<user::Model>, Error> {
     if api_user.has_access(ApiUserScope::Client, ApiUserAccess::Write) {
         let user = insert_user(&state.db, realm_id, payload).await?;
+        send_welcome_email(vec![&user.email], format!("{:?} {:?}", user.first_name, user.last_name).as_str())
+            .await
+            .unwrap();
         Ok(Json(user))
     } else {
         Err(Error::Authenticate(AuthenticateError::ActionForbidden))
@@ -337,4 +345,42 @@ pub async fn delete_resource(
     } else {
         Err(Error::Authenticate(AuthenticateError::ActionForbidden))
     }
+}
+
+pub async fn send_email_verification(
+    user: ApiUser,
+    Extension(state): Extension<Arc<AppState>>,
+    Path(realm_id): Path<Uuid>,
+    Form(payload): Form<SendEmailVerificationRequest>,
+) -> Result<Json<SendEmailVerificationResponse>, Error> {
+    if !user.has_access(ApiUserScope::Client, ApiUserAccess::Write) {
+        debug!("No allowed access");
+        return Err(Error::Authenticate(AuthenticateError::ActionForbidden));
+    }
+
+    if user.realm_id != realm_id {
+        debug!("No allowed access");
+        return Err(Error::Authenticate(AuthenticateError::ActionForbidden));
+    }
+
+    send_email_verification_service(&state.db, payload).await
+}
+
+pub async fn verify_email(
+    user: ApiUser,
+    Extension(state): Extension<Arc<AppState>>,
+    Path(realm_id): Path<Uuid>,
+    Form(payload): Form<VerifyEmailRequest>,
+) -> Result<Json<VerifyEmailResponse>, Error> {
+    if !user.has_access(ApiUserScope::Client, ApiUserAccess::Write) {
+        debug!("No allowed access");
+        return Err(Error::Authenticate(AuthenticateError::ActionForbidden));
+    }
+
+    if user.realm_id != realm_id {
+        debug!("No allowed access");
+        return Err(Error::Authenticate(AuthenticateError::ActionForbidden));
+    }
+
+    verify_user_email(&state.db, payload).await
 }

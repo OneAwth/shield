@@ -4,17 +4,17 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize)]
 pub struct Credentials {
-    pub email: String,
+    pub username: String,
     pub password: String,
 }
 
 #[derive(Serialize)]
 pub struct LoginResponse {
-    pub access_token: String,
     pub user: user::Model,
     pub session_id: Uuid,
     pub realm_id: Uuid,
     pub client_id: Uuid,
+    pub access_token: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub refresh_token: Option<String>,
 }

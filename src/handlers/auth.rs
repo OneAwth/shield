@@ -29,7 +29,7 @@ use crate::{
     },
     utils::role_checker::has_access_to_api_cred,
 };
-use axum::{extract::Path, Extension, Json};
+use axum::{extract::Path, Extension, Form, Json};
 use tracing::debug;
 
 pub async fn login(
@@ -37,7 +37,7 @@ pub async fn login(
     Extension(state): Extension<Arc<AppState>>,
     Extension(session_info): Extension<Arc<SessionInfo>>,
     Path((realm_id, client_id)): Path<(Uuid, Uuid)>,
-    Json(payload): Json<Credentials>,
+    Form(payload): Form<Credentials>,
 ) -> Result<Json<LoginResponse>, Error> {
     debug!("🚀 Login request received! {:#?}", session_info);
 
@@ -46,7 +46,7 @@ pub async fn login(
         return Err(Error::Authenticate(AuthenticateError::ActionForbidden));
     }
 
-    let (user, resource_groups) = get_active_user_and_resource_groups(&state.db, Either::E1(payload.email), realm_id, client_id).await?;
+    let (user, resource_groups) = get_active_user_and_resource_groups(&state.db, Either::E1(payload.username), realm_id, client_id).await?;
 
     if !user.verify_password(&payload.password) {
         debug!("Wrong password");
@@ -78,7 +78,7 @@ pub async fn logout(
     api_user: ApiUser,
     Extension(state): Extension<Arc<AppState>>,
     Path((_, _)): Path<(Uuid, Uuid)>,
-    Json(payload): Json<LogoutRequest>,
+    Form(payload): Form<LogoutRequest>,
 ) -> Result<Json<LogoutResponse>, Error> {
     if !api_user.has_access(ApiUserScope::Client, ApiUserAccess::Write) {
         debug!("No allowed access");
@@ -137,7 +137,7 @@ pub async fn logout_all(
     api_user: ApiUser,
     Extension(state): Extension<Arc<AppState>>,
     Path((_, client_id)): Path<(Uuid, Uuid)>,
-    Json(payload): Json<LogoutRequest>,
+    Form(payload): Form<LogoutRequest>,
 ) -> Result<Json<LogoutResponse>, Error> {
     if !api_user.has_access(ApiUserScope::Client, ApiUserAccess::Write) {
         debug!("No allowed access");
@@ -186,7 +186,7 @@ pub async fn introspect(
     api_user: ApiUser,
     Extension(state): Extension<Arc<AppState>>,
     Path((realm_id, client_id)): Path<(Uuid, Uuid)>,
-    Json(payload): Json<IntrospectRequest>,
+    Form(payload): Form<IntrospectRequest>,
 ) -> Result<Json<IntrospectResponse>, Error> {
     if !api_user.has_access(ApiUserScope::Client, ApiUserAccess::Read) {
         debug!("No allowed access");
@@ -226,7 +226,7 @@ pub async fn refresh_token(
     Extension(state): Extension<Arc<AppState>>,
     Extension(session_info): Extension<Arc<SessionInfo>>,
     Path((realm_id, client_id)): Path<(Uuid, Uuid)>,
-    Json(payload): Json<RefreshTokenRequest>,
+    Form(payload): Form<RefreshTokenRequest>,
 ) -> Result<Json<RefreshTokenResponse>, Error> {
     if !has_access_to_api_cred(&user, ApiUserScope::Client, ApiUserAccess::Write).await {
         debug!("No allowed access");

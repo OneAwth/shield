@@ -27,3 +27,20 @@ pub enum ApiUserScope {
     #[sea_orm(string_value = "realm")]
     Realm,
 }
+#[derive(Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize)]
+#[sea_orm(rs_type = "String", db_type = "Enum", enum_name = "verification_type")]
+#[serde(rename_all = "snake_case")]
+pub enum VerificationType {
+    #[sea_orm(string_value = "email")]
+    Email,
+    #[sea_orm(string_value = "forgot_password")]
+    ForgotPassword,
+    #[sea_orm(string_value = "mfa")]
+    Mfa,
+    #[sea_orm(string_value = "otp")]
+    Otp,
+    #[sea_orm(string_value = "passwordless")]
+    Passwordless,
+    #[sea_orm(string_value = "phone")]
+    Phone,
+}

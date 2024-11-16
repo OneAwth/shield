@@ -4,7 +4,7 @@ use super::client::{send_email, SendEmail};
 
 pub async fn send_verification_email(to: Vec<&str>, username: &str, token: &str) -> Result<Code, Box<dyn std::error::Error>> {
     let subject = "Email Verification";
-    let template_path = "src/mail/templates/Verification-email.html";
+    let template_path = "src/packages/mail/templates/verification.html";
     let base_url = "http://localhost:8000/api/auth/verify";
     let verification_link = create_verification_link(base_url, token);
     let placeholders = &vec![
@@ -43,7 +43,7 @@ pub async fn send_welcome_email(to: Vec<&str>, username: &str) -> Result<Code, B
 
 pub async fn send_forgot_password_email(to: Vec<&str>, rest_link: &str, username: &str) -> Result<Code, Box<dyn std::error::Error>> {
     let subject = "Rest your Password";
-    let template_path = "src/mail/templates/RestPassword-email.html";
+    let template_path = "src/packages/mail/templates/password-reset.html";
     let placeholders = &vec![
         ("{{username}}".to_string(), username.to_string()),
         ("{{rest_link}}".to_string(), rest_link.to_string()),

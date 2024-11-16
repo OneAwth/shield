@@ -1,10 +1,18 @@
 use crate::{
-    mappers::user::CreateUserRequest,
-    packages::errors::{AuthenticateError, Error, NotFoundError},
-    utils::hash::generate_password_hash,
+    mappers::user::{CreateUserRequest, SendEmailVerificationRequest, SendEmailVerificationResponse, VerifyEmailRequest, VerifyEmailResponse},
+    packages::{
+        errors::{AuthenticateError, Error, NotFoundError},
+        mail::postman::send_verification_email,
+    },
+    utils::{
+        hash::generate_password_hash,
+        jwt_helper::email::{create_email_verification_token, validate_email_token, CreateEmailVerificationTokenArgs, VerifyEmailTokenArgs},
+    },
 };
+use axum::Json;
 use axum_extra::either::Either;
-use entity::{resource, resource_group, user};
+use chrono::Utc;
+use entity::{resource, resource_group, sea_orm_active_enums::VerificationType, user, verification};
 use futures::future::join_all;
 use sea_orm::{prelude::Uuid, ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set, TransactionTrait};
 use tracing::debug;
@@ -115,4 +123,73 @@ pub async fn get_active_user_and_resource_groups(
     }
 
     Ok((user, resource_groups))
+}
+
+pub async fn send_email_verification_service(
+    db: &DatabaseConnection,
+    data: SendEmailVerificationRequest,
+) -> Result<Json<SendEmailVerificationResponse>, Error> {
+    let user = user::Entity::find_by_id(data.user_id).one(db).await?;
+    if user.is_none() {
+        return Err(Error::Authenticate(AuthenticateError::InvalidToken));
+    }
+    let user = user.unwrap();
+    if user.locked_at.is_some() {
+        return Err(Error::Authenticate(AuthenticateError::Locked));
+    }
+
+    let verification = verification::ActiveModel {
+        id: Set(Uuid::now_v7()),
+        user_id: Set(user.id),
+        r#type: Set(VerificationType::Email),
+        expires: Set((chrono::Utc::now() + chrono::Duration::seconds(60 * 60)).into()),
+    };
+    let verification = verification.insert(db).await?;
+
+    let token = create_email_verification_token(CreateEmailVerificationTokenArgs {
+        sub: verification.id,
+        exp: verification.expires.timestamp() as usize,
+        ..Default::default()
+    })?;
+
+    let name = format!("{} {}", user.first_name, user.last_name.unwrap_or_default());
+    send_verification_email(vec![&user.email], &name, &token).await.unwrap();
+
+    Ok(Json(SendEmailVerificationResponse { ok: true }))
+}
+
+pub async fn verify_user_email(db: &DatabaseConnection, data: VerifyEmailRequest) -> Result<Json<VerifyEmailResponse>, Error> {
+    let token_data = validate_email_token(VerifyEmailTokenArgs {
+        token: data.token,
+        ..Default::default()
+    })?;
+    if token_data.claims.vefification_type != VerificationType::Email {
+        return Err(Error::Authenticate(AuthenticateError::InvalidToken));
+    }
+
+    let data = verification::Entity::find_by_id(token_data.claims.sub).one(db).await?;
+    if data.is_none() {
+        return Err(Error::Authenticate(AuthenticateError::InvalidToken));
+    }
+
+    let data = data.unwrap();
+    if data.expires.timestamp() <= chrono::Local::now().timestamp() {
+        return Err(Error::Authenticate(AuthenticateError::InvalidToken));
+    }
+
+    let user = user::Entity::find_by_id(data.user_id).one(db).await?;
+    if user.is_none() {
+        return Err(Error::Authenticate(AuthenticateError::InvalidToken));
+    }
+    if user.as_ref().unwrap().locked_at.is_some() {
+        return Err(Error::Authenticate(AuthenticateError::Locked));
+    }
+
+    let mut user: user::ActiveModel = user.unwrap().into();
+    user.email_verified_at = Set(Some(Utc::now().into()));
+    user.update(db).await?;
+
+    verification::Entity::delete_by_id(token_data.claims.sub).exec(db).await?;
+
+    Ok(Json(VerifyEmailResponse { ok: true }))
 }

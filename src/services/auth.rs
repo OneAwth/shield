@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use crate::{
     mappers::auth::LoginResponse,
     middleware::session_info_extractor::SessionInfo,
@@ -16,6 +14,7 @@ use entity::{client, refresh_token, resource, resource_group, session, user};
 use sea_orm::{
     prelude::Uuid, ActiveModelTrait, ColumnTrait, DatabaseConnection, DatabaseTransaction, DbErr, EntityTrait, QueryFilter, Set, TransactionTrait,
 };
+use std::sync::Arc;
 use tracing::debug;
 
 pub async fn handle_refresh_token(
@@ -124,11 +123,11 @@ pub async fn create_session_and_refresh_token(
                     };
 
                     Ok(LoginResponse {
-                        access_token: session.access_token,
                         realm_id: user.realm_id,
                         user,
                         session_id: session.session_id,
                         client_id: client.id,
+                        access_token: session.access_token,
                         refresh_token,
                     })
                 }
