@@ -8,3 +8,4 @@ pub use super::resource::Entity as Resource;
 pub use super::resource_group::Entity as ResourceGroup;
 pub use super::session::Entity as Session;
 pub use super::user::Entity as User;
+pub use super::verification::Entity as Verification;

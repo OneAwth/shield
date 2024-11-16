@@ -6,3 +6,4 @@ pub mod resource;
 pub mod resource_group;
 pub mod session;
 pub mod user;
+pub mod verification;

@@ -41,6 +41,9 @@ pub enum Error {
 
     #[error("JWT error: {0}")]
     Jwt(#[from] jsonwebtoken::errors::Error),
+
+    #[error("Mail error: {0}")]
+    Mail(#[from] lettre::transport::smtp::Error),
 }
 
 impl Error {
@@ -59,6 +62,7 @@ impl Error {
             Error::File(_) => (StatusCode::INTERNAL_SERVER_ERROR, 5008),
             Error::SerdeJson(_) => (StatusCode::INTERNAL_SERVER_ERROR, 5009),
             Error::DbTransaction(_, status_code) => (*status_code, 5010),
+            Error::Mail(_) => (StatusCode::INTERNAL_SERVER_ERROR, 5011),
         }
     }
 

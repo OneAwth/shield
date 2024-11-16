@@ -42,3 +42,4 @@ uaparser = "0.6.4"
 uuid = { version = "1.11.0", features = ["v7"] }
 rand = "0.8.5"
 base64 = "0.22.1"
+lettre = "0.11.10"
