@@ -1,7 +1,7 @@
 use crate::{
     mappers::user::{
         CreateUserRequest, ForgotPasswordRequest, ForgotPasswordResponse, InitiateForgotPasswordResponse, SendEmailVerificationRequest,
-        SendEmailVerificationResponse, VerifyEmailRequest, VerifyEmailResponse,
+        SendEmailVerificationResponse, UpdateUserRequest, UserResponse, VerifyEmailRequest, VerifyEmailResponse,
     },
     packages::{
         errors::{AuthenticateError, Error, NotFoundError},
@@ -71,6 +71,54 @@ pub async fn insert_user(db: &DatabaseConnection, realm_id: Uuid, payload: Creat
     join_all(futures).await;
     txn.commit().await?;
     Ok(user)
+}
+
+pub async fn update_user_by_id(
+    db: &DatabaseConnection,
+    realm_id: Uuid,
+    user_id: Uuid,
+    payload: UpdateUserRequest,
+) -> Result<Json<UserResponse>, Error> {
+    let user = user::Entity::find()
+        .filter(user::Column::Id.eq(user_id))
+        .filter(user::Column::RealmId.eq(realm_id))
+        .one(db)
+        .await?;
+
+    if user.is_none() {
+        return Err(Error::Authenticate(AuthenticateError::InvalidToken));
+    }
+
+    let user = user.unwrap();
+    if user.locked_at.is_some() {
+        return Err(Error::Authenticate(AuthenticateError::Locked));
+    }
+
+    let mut user_active_model: user::ActiveModel = user.into();
+    if let Some(email) = payload.email {
+        user_active_model.email = Set(email);
+    }
+    if let Some(first_name) = payload.first_name {
+        user_active_model.first_name = Set(first_name);
+    }
+    if let Some(last_name) = payload.last_name {
+        user_active_model.last_name = Set(Some(last_name));
+    }
+    if let Some(phone) = payload.phone {
+        user_active_model.phone = Set(Some(phone));
+    }
+    if let Some(image) = payload.image {
+        user_active_model.image = Set(Some(image));
+    }
+    if let Some(is_account_activated) = payload.is_account_activated {
+        user_active_model.is_account_activated = Set(is_account_activated);
+    }
+    if let Some(is_temp_password) = payload.is_temp_password {
+        user_active_model.is_temp_password = Set(is_temp_password);
+    }
+    let user = user_active_model.update(db).await?;
+
+    Ok(Json(UserResponse::from(user)))
 }
 
 pub async fn get_active_user_by_id(db: &DatabaseConnection, id: Uuid) -> Result<user::Model, Error> {

@@ -17,6 +17,7 @@ pub struct Model {
     pub two_factor_enabled_at: Option<DateTimeWithTimeZone>,
     pub password_hash: Option<String>,
     pub is_temp_password: bool,
+    pub is_account_activated: bool,
     pub locked_at: Option<DateTimeWithTimeZone>,
     pub realm_id: Uuid,
     pub created_at: DateTimeWithTimeZone,

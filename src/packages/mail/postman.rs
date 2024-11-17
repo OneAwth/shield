@@ -26,20 +26,20 @@ fn create_verification_link(base_url: &str, token: &str) -> String {
     format!("{}?token={}", base_url, token)
 }
 
-pub async fn send_welcome_email(to: Vec<&str>, username: &str) -> Result<Code, Box<dyn std::error::Error>> {
-    let subject = "Welcome to Application";
-    let template_path = "src/packages/mail/templates/welcome.html";
-    let placeholders = &vec![("{{username}}".to_string(), username.to_string())];
-
-    send_email(SendEmail {
-        to,
-        subject,
-        template_path,
-        placeholders,
-        ..Default::default()
-    })
-    .await
-}
+// pub async fn send_welcome_email(to: Vec<&str>, username: &str) -> Result<Code, Box<dyn std::error::Error>> {
+//     let subject = "Welcome to Application";
+//     let template_path = "src/packages/mail/templates/welcome.html";
+//     let placeholders = &vec![("{{username}}".to_string(), username.to_string())];
+//
+//     send_email(SendEmail {
+//         to,
+//         subject,
+//         template_path,
+//         placeholders,
+//         ..Default::default()
+//     })
+//     .await
+// }
 
 // pub async fn send_forgot_password_email(to: Vec<&str>, rest_link: &str, username: &str) -> Result<Code, Box<dyn std::error::Error>> {
 //     let subject = "Rest your Password";

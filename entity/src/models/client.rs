@@ -15,6 +15,7 @@ pub struct Model {
     pub use_refresh_token: bool,
     pub refresh_token_lifetime: i32,
     pub refresh_token_reuse_limit: i32,
+    pub is_account_activation_required: bool,
     pub locked_at: Option<DateTimeWithTimeZone>,
     pub realm_id: Uuid,
     pub created_at: DateTimeWithTimeZone,

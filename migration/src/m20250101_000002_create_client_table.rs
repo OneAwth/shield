@@ -1,4 +1,4 @@
-use super::m20220101_000001_create_realm_table::Realm;
+use super::m20250101_000001_create_realm_table::Realm;
 use sea_orm::sqlx::types::chrono;
 use sea_orm_migration::prelude::*;
 
@@ -21,6 +21,7 @@ impl MigrationTrait for Migration {
                     .col(ColumnDef::new(Client::UseRefreshToken).boolean().not_null().default(true))
                     .col(ColumnDef::new(Client::RefreshTokenLifetime).integer().not_null().default(3600))
                     .col(ColumnDef::new(Client::RefreshTokenReuseLimit).integer().not_null().default(0))
+                    .col(ColumnDef::new(Client::IsAccountActivationRequired).boolean().not_null().default(false))
                     .col(ColumnDef::new(Client::LockedAt).timestamp_with_time_zone())
                     .col(ColumnDef::new(Client::RealmId).uuid().not_null())
                     .foreign_key(
@@ -64,6 +65,7 @@ pub enum Client {
     UseRefreshToken,
     RefreshTokenLifetime,
     RefreshTokenReuseLimit,
+    IsAccountActivationRequired,
     LockedAt,
     RealmId,
     CreatedAt,

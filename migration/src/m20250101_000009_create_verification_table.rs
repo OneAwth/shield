@@ -1,4 +1,4 @@
-use super::m20220101_000003_create_user_table::User;
+use crate::m20250101_000003_create_user_table::User;
 use sea_orm::{ActiveEnum, DbBackend, DeriveActiveEnum, EnumIter, Schema};
 use sea_orm_migration::prelude::*;
 

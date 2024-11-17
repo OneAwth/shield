@@ -46,6 +46,7 @@ pub async fn update_client_by_id(
     }
 
     let client = get_client_by_id_and_realm_id(db, realm_id, client_id).await?;
+    println!("client: at line 49");
     match client {
         Some(client) => {
             let locked_at = match payload.lock {
@@ -76,6 +77,10 @@ pub async fn update_client_by_id(
                 refresh_token_reuse_limit: Set(match payload.refresh_token_reuse_limit {
                     Some(refresh_token_reuse_limit) => refresh_token_reuse_limit,
                     None => client.refresh_token_reuse_limit,
+                }),
+                is_account_activation_required: Set(match payload.is_account_activation_required {
+                    Some(is_account_activation_required) => is_account_activation_required,
+                    None => client.is_account_activation_required,
                 }),
                 locked_at: Set(locked_at),
                 ..Default::default()
