@@ -5,7 +5,8 @@ use axum::{
 
 use crate::handlers::user::{
     add_resources, create_user, delete_resource, delete_resource_group, delete_user, forgot_password, get_resource_group, get_resource_groups,
-    get_resources, get_user, get_users, initiate_forgot_password, send_email_verification, update_resource, update_resource_group, verify_email,
+    get_resources, get_user, get_users, initiate_forgot_password, send_email_verification, update_resource, update_resource_group, update_user,
+    verify_email,
 };
 
 pub fn create_routes() -> Router {
@@ -16,7 +17,7 @@ pub fn create_routes() -> Router {
         .nest(
             "/:user_id",
             Router::new()
-                .route("/", get(get_user).delete(delete_user))
+                .route("/", get(get_user).patch(update_user).delete(delete_user))
                 .route("/forgot-password", post(initiate_forgot_password).patch(forgot_password))
                 .nest(
                     "/resource-group",

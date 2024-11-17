@@ -75,10 +75,12 @@ pub async fn update_client(
     Path((realm_id, client_id)): Path<(Uuid, Uuid)>,
     Json(payload): Json<UpdateClientRequest>,
 ) -> Result<Json<client::Model>, Error> {
+    println!("client update request");
     if !api_user.has_access(ApiUserScope::Client, ApiUserAccess::Update) {
         return Err(Error::Authenticate(AuthenticateError::NoResource));
     }
 
+    println!("access level");
     let client = update_client_by_id(&state.db, realm_id, client_id, payload).await?;
     Ok(Json(client))
 }

@@ -1,4 +1,4 @@
-use super::m20220101_000004_create_resource_group_table::ResourceGroup;
+use super::m20250101_000004_create_resource_group_table::ResourceGroup;
 use sea_orm::sqlx::types::chrono;
 use sea_orm_migration::prelude::*;
 

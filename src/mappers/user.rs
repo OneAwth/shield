@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
-use sea_orm::prelude::Uuid;
+use entity::user;
+use sea_orm::prelude::{DateTimeWithTimeZone, Uuid};
 use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize)]
@@ -24,6 +25,56 @@ pub struct CreateUserRequest {
     pub phone: Option<String>,
     pub image: Option<String>,
     pub resource: ResourceSubset,
+}
+
+#[derive(Deserialize)]
+pub struct UpdateUserRequest {
+    pub email: Option<String>,
+    pub first_name: Option<String>,
+    pub last_name: Option<String>,
+    pub phone: Option<String>,
+    pub image: Option<String>,
+    pub is_account_activated: Option<bool>,
+    pub is_temp_password: Option<bool>,
+}
+
+#[derive(Serialize)]
+pub struct UserResponse {
+    pub id: Uuid,
+    pub first_name: String,
+    pub last_name: Option<String>,
+    pub email: String,
+    pub email_verified_at: Option<DateTimeWithTimeZone>,
+    pub phone: Option<String>,
+    pub image: Option<String>,
+    pub two_factor_enabled_at: Option<DateTimeWithTimeZone>,
+    pub is_temp_password: bool,
+    pub is_account_activated: bool,
+    pub locked_at: Option<DateTimeWithTimeZone>,
+    pub realm_id: Uuid,
+    pub created_at: DateTimeWithTimeZone,
+    pub updated_at: DateTimeWithTimeZone,
+}
+
+impl From<user::Model> for UserResponse {
+    fn from(user: user::Model) -> UserResponse {
+        UserResponse {
+            id: user.id,
+            first_name: user.first_name.clone(),
+            last_name: user.last_name.clone(),
+            email: user.email.clone(),
+            email_verified_at: user.email_verified_at,
+            phone: user.phone.clone(),
+            image: user.image.clone(),
+            two_factor_enabled_at: user.two_factor_enabled_at,
+            is_temp_password: user.is_temp_password,
+            is_account_activated: user.is_account_activated,
+            locked_at: user.locked_at,
+            realm_id: user.realm_id,
+            created_at: user.created_at,
+            updated_at: user.updated_at,
+        }
+    }
 }
 
 #[derive(Deserialize)]

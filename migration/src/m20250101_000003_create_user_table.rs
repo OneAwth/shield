@@ -1,4 +1,4 @@
-use super::m20220101_000001_create_realm_table::Realm;
+use super::m20250101_000001_create_realm_table::Realm;
 use sea_orm::sqlx::types::chrono;
 use sea_orm_migration::prelude::*;
 
@@ -23,6 +23,7 @@ impl MigrationTrait for Migration {
                     .col(ColumnDef::new(User::TwoFactorEnabledAt).timestamp_with_time_zone())
                     .col(ColumnDef::new(User::PasswordHash).string())
                     .col(ColumnDef::new(User::IsTempPassword).boolean().not_null().default(true))
+                    .col(ColumnDef::new(User::IsAccountActivated).boolean().not_null().default(false))
                     .col(ColumnDef::new(User::LockedAt).timestamp_with_time_zone())
                     .col(ColumnDef::new(User::RealmId).uuid().not_null())
                     .foreign_key(
@@ -75,6 +76,7 @@ pub enum User {
     TwoFactorEnabledAt,
     PasswordHash,
     IsTempPassword,
+    IsAccountActivated,
     LockedAt,
     RealmId,
     CreatedAt,

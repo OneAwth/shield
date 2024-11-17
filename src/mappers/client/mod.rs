@@ -14,4 +14,5 @@ pub struct UpdateClientRequest {
     pub session_lifetime: Option<i32>,       // in seconds
     pub refresh_token_lifetime: Option<i32>, // in seconds
     pub refresh_token_reuse_limit: Option<i32>,
+    pub is_account_activation_required: Option<bool>,
 }

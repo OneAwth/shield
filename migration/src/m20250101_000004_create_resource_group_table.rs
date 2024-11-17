@@ -1,6 +1,6 @@
-use super::m20220101_000001_create_realm_table::Realm;
-use super::m20220101_000002_create_client_table::Client;
-use super::m20220101_000003_create_user_table::User;
+use super::m20250101_000001_create_realm_table::Realm;
+use super::m20250101_000002_create_client_table::Client;
+use super::m20250101_000003_create_user_table::User;
 use sea_orm::sqlx::types::chrono;
 use sea_orm_migration::prelude::*;
 

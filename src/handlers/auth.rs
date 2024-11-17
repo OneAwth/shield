@@ -61,6 +61,11 @@ pub async fn login(
         return Err(Error::Authenticate(AuthenticateError::MaxConcurrentSessions));
     }
 
+    if client.is_account_activation_required && !user.is_account_activated {
+        debug!("User is not activated");
+        return Err(Error::Authenticate(AuthenticateError::AccountNotActivated));
+    }
+
     let login_response = create_session_and_refresh_token(state, user, client, resource_groups, session_info).await?;
     Ok(Json(login_response))
 }

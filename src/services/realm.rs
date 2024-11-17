@@ -41,8 +41,15 @@ pub async fn update_realm_by_id(db: &DatabaseConnection, id: Uuid, payload: Upda
 
             let updated_realm = realm::ActiveModel {
                 id: Set(realm.id),
-                name: Set(payload.name),
-                max_concurrent_sessions: Set(payload.max_concurrent_sessions),
+
+                name: Set(match payload.name {
+                    Some(name) => name,
+                    None => realm.name,
+                }),
+                max_concurrent_sessions: Set(match payload.max_concurrent_sessions {
+                    Some(max_concurrent_sessions) => Some(max_concurrent_sessions),
+                    None => realm.max_concurrent_sessions,
+                }),
                 session_lifetime: Set(match payload.session_lifetime {
                     Some(session_lifetime) => session_lifetime,
                     None => realm.session_lifetime,
@@ -54,6 +61,10 @@ pub async fn update_realm_by_id(db: &DatabaseConnection, id: Uuid, payload: Upda
                 refresh_token_reuse_limit: Set(match payload.refresh_token_reuse_limit {
                     Some(refresh_token_reuse_limit) => refresh_token_reuse_limit,
                     None => realm.refresh_token_reuse_limit,
+                }),
+                is_account_activation_required: Set(match payload.is_account_activation_required {
+                    Some(is_account_activation_required) => is_account_activation_required,
+                    None => realm.is_account_activation_required,
                 }),
                 locked_at: Set(locked_at),
                 ..Default::default()

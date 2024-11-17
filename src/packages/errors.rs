@@ -108,6 +108,8 @@ pub enum AuthenticateError {
     ActionForbidden,
     #[error("User is locked")]
     Locked,
+    #[error("User account is not activated")]
+    AccountNotActivated,
 }
 
 impl AuthenticateError {
@@ -120,6 +122,7 @@ impl AuthenticateError {
             AuthenticateError::ActionForbidden => (StatusCode::FORBIDDEN, 40009),
             AuthenticateError::MaxConcurrentSessions => (StatusCode::FORBIDDEN, 40010),
             AuthenticateError::InvalidApiCredentials => (StatusCode::UNAUTHORIZED, 40011),
+            AuthenticateError::AccountNotActivated => (StatusCode::FORBIDDEN, 40012),
         }
     }
 }

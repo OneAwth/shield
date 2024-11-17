@@ -20,6 +20,7 @@ impl MigrationTrait for Migration {
                     .col(ColumnDef::new(Realm::UseRefreshToken).boolean().not_null().default(true))
                     .col(ColumnDef::new(Realm::RefreshTokenLifetime).integer().not_null().default(3600))
                     .col(ColumnDef::new(Realm::RefreshTokenReuseLimit).integer().not_null().default(0))
+                    .col(ColumnDef::new(Realm::IsAccountActivationRequired).boolean().not_null().default(false))
                     .col(ColumnDef::new(Realm::LockedAt).timestamp_with_time_zone())
                     .col(
                         ColumnDef::new(Realm::CreatedAt)
@@ -54,6 +55,7 @@ pub enum Realm {
     UseRefreshToken,
     RefreshTokenLifetime,
     RefreshTokenReuseLimit,
+    IsAccountActivationRequired,
     LockedAt,
     CreatedAt,
     UpdatedAt,
