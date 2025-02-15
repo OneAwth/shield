@@ -1,7 +1,7 @@
-use std::collections::HashMap;
 use entity::user;
 use sea_orm::prelude::{DateTimeWithTimeZone, Uuid};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 #[derive(Deserialize)]
 pub struct ResourceGroup {
