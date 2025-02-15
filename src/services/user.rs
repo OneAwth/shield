@@ -24,6 +24,7 @@ use entity::{resource, resource_group, sea_orm_active_enums::VerificationType, u
 use futures::future::join_all;
 use sea_orm::{prelude::Uuid, ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set, TransactionTrait};
 use tracing::debug;
+use crate::mappers::user::IdentifierValue;
 
 pub async fn insert_user(db: &DatabaseConnection, realm_id: Uuid, payload: CreateUserRequest) -> Result<user::Model, Error> {
     let txn = db.begin().await?;
@@ -55,13 +56,24 @@ pub async fn insert_user(db: &DatabaseConnection, realm_id: Uuid, payload: Creat
     let futures: Vec<_> = payload
         .resource
         .identifiers
+        .unwrap_or_default()
         .iter()
         .map(|(name, value)| {
+            let value_string = match value {
+                IdentifierValue::String(s) => s.clone(),
+                IdentifierValue::Number(n) => n.to_string(),
+                IdentifierValue::Boolean(b) => b.to_string(),
+                IdentifierValue::Array(arr) => serde_json::to_string(arr)
+                    .unwrap_or_else(|_| "[]".to_string()),
+                IdentifierValue::Object(obj) => serde_json::to_string(obj)
+                    .unwrap_or_else(|_| "{}".to_string()),
+            };
+
             let resource = resource::ActiveModel {
                 id: Set(Uuid::now_v7()),
                 group_id: Set(resource_group.id),
                 name: Set(name.to_string()),
-                value: Set(value.to_string()),
+                value: Set(value_string),
                 ..Default::default()
             };
             resource.insert(&txn)

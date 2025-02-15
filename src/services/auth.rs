@@ -156,10 +156,11 @@ pub async fn create_session(
         .await?;
 
     // TODO: if resource_groups_id is Some and resources are empty then return error else continue
-    if resources.is_empty() {
-        debug!("No resources found");
-        return Err(Error::Authenticate(AuthenticateError::Locked));
-    }
+    // debug!("Resources: {:#?}", resource_groups.id);
+    // if !resource_groups.id.is_nil() && resources.is_empty() {
+    //     debug!("No resources found");
+    //     return Err(Error::Authenticate(AuthenticateError::Locked));
+    // }
 
     let session_model = session::ActiveModel {
         id: Set(Uuid::now_v7()),
@@ -185,8 +186,7 @@ pub async fn create_session(
         resources,
         &session,
         &SETTINGS.read().secrets.signing_key,
-    )
-    .unwrap();
+    )?;
 
     Ok(LoginResponse {
         access_token,
