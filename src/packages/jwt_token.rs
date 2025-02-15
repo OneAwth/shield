@@ -2,6 +2,7 @@ use jsonwebtoken::{errors::Error, DecodingKey, EncodingKey, Header, TokenData, V
 use once_cell::sync::Lazy;
 use sea_orm::prelude::Uuid;
 use serde::{Deserialize, Serialize};
+use serde_json::Value as JsonValue;
 use std::collections::HashMap;
 
 use entity::{client, resource, resource_group, session, user};
@@ -18,15 +19,24 @@ pub struct Resource {
     pub client_id: Uuid,
     pub client_name: String,
     pub group_name: String,
-    pub identifiers: HashMap<String, String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub identifiers: Option<HashMap<String, JsonValue>>,
 }
 
 impl Resource {
-    fn from(client: &client::Model, resource_group: resource_group::Model, resources: Vec<resource::Model>) -> Self {
-        let mut identifiers = HashMap::new();
-        for resource in resources {
-            identifiers.insert(resource.name, resource.value);
-        }
+    fn from(client: &client::Model, resource_group: resource_group::Model, resources: Option<Vec<resource::Model>>) -> Self {
+        let identifiers = resources.map(|resources| {
+            resources
+                .into_iter()
+                .map(|resource| {
+                    let value = match serde_json::from_str(&resource.value) {
+                        Ok(json_value) => json_value,
+                        Err(_) => JsonValue::String(resource.value),
+                    };
+                    (resource.name, value)
+                })
+                .collect()
+        });
 
         Self {
             client_id: client.id,
@@ -66,7 +76,7 @@ impl JwtUser {
             last_name: user.last_name.unwrap_or_else(|| "".into()),
             email: user.email.clone(),
             phone: user.phone.unwrap_or_else(|| "".into()),
-            resource: Some(Resource::from(client, resource_group, resources)),
+            resource: Some(Resource::from(client, resource_group, Some(resources))),
         }
     }
 
