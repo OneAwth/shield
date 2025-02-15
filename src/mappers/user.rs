@@ -1,8 +1,7 @@
-use std::collections::HashMap;
-
 use entity::user;
 use sea_orm::prelude::{DateTimeWithTimeZone, Uuid};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 #[derive(Deserialize)]
 pub struct ResourceGroup {
@@ -11,9 +10,19 @@ pub struct ResourceGroup {
 }
 
 #[derive(Deserialize)]
+#[serde(untagged)]
+pub enum IdentifierValue {
+    String(String),
+    Number(i64),
+    Boolean(bool),
+    Array(Vec<String>),
+    Object(HashMap<String, String>),
+}
+
+#[derive(Deserialize)]
 pub struct ResourceSubset {
     pub group: ResourceGroup,
-    pub identifiers: HashMap<String, String>,
+    pub identifiers: Option<HashMap<String, IdentifierValue>>,
 }
 
 #[derive(Deserialize)]
